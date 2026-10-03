@@ -1,0 +1,4 @@
+/build/
+/bin/kamakiri-studio
+__pycache__/
+*.pyc

@@ -1,0 +1,24 @@
+name: Build and test
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install build dependencies
+        run: pacman -Syu --noconfirm cmake ninja git qt6-base kconfig kidletime wayland pkgconf python breeze
+      - uses: actions/checkout@v4
+      - name: Create unprivileged test user
+        run: |
+          useradd --create-home studio
+          chown -R studio:studio "$GITHUB_WORKSPACE"
+      - name: Build
+        run: |
+          runuser -u studio -- cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          runuser -u studio -- cmake --build build -j2
+      - name: Tests
+        run: |
+          runuser -u studio -- ctest --test-dir build --output-on-failure
+          runuser -u studio -- python tests/worker_integration.py build/kamakiri-studio

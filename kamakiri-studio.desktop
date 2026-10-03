@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=KamaKiriStudio
+Comment=KDE appearance trials and desktop session switching
+Exec=kamakiri-studio
+Icon=preferences-desktop-theme-global
+Terminal=false
+Categories=Settings;DesktopSettings;Qt;KDE;
