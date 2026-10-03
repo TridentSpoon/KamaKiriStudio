@@ -1,4 +1,4 @@
-# KamaKiriStudio 0.3.0
+# KamaKiriStudio 0.4.0
 
 A native KDE desktop studio that keeps Plasma and KWin as its base. Inspired by Caelestia and Ryoku, with 22 official Omarchy color palettes, including Osaka Jade.
 
@@ -12,7 +12,11 @@ A native KDE desktop studio that keeps Plasma and KWin as its base. Inspired by 
 - A picker for installed desktop/window-manager sessions, handing off to KDE’s logout confirmation and the login-screen session menu.
 - About, manual GitHub release checks and an optional five-minute update monitor while the app is open. No automatic downloads or installations.
 
-This provides native KDE equivalents of the requested features. It does not reproduce Caelestia’s morphing animations or replace Plasma with a Quickshell shell. Existing Plasma/application styles control actual rounding and transparency.
+The launcher and dashboard now open as separate rounded, frameless popups, with optional compositor blur. **Reference rounded** uses larger corners inspired by the supplied desktop images. **Fluent inspired** uses tighter corners, neutral surfaces and lighter borders. Choose **Follow desktop**, **Light** or **Dark**. These are original Qt/KDE interfaces; they do not use Microsoft components or replace Plasma with Quickshell. Blur depends on the existing KWin blur effect; it is requested, never forced on. Popups close with Escape, their close button or focus moving to another application. KWin controls placement on Wayland.
+
+In **Appearance**, use **Popup look** and **Preview launcher/dashboard**. The **Slim left rail** panel preset selects a 40px floating panel and adds two native launch buttons. A **Floating bottom bar** preset is also available. These presets and popup-look changes turn off **Include KDE color changes** so your palette stays unchanged; you can enable it explicitly. Apply & try uses the existing Yes/No recovery flow for panel geometry, popup preferences and newly added panel buttons. Existing widgets are preserved. The panel itself uses your installed Plasma theme’s rounded floating shape.
+
+The app launcher filters installed application metadata and opens the selected app through KDE’s ApplicationLauncherJob. Search input is never treated as a shell command. The popup dashboard has calendar, media and CPU/memory/disk/network pages. GPU, weather and audio visualizers are not included. The manager also previews a Fluent-inspired appearance when that popup style is selected.
 
 ## Get started
 
@@ -28,7 +32,7 @@ python3 install-local.py
 
 Open **KamaKiriStudio** from the Applications menu, or run `./launch.sh`. Use `./launch.sh --demo` for a preview that leaves appearance unchanged.
 
-Requires C++17, CMake, Qt6 Widgets/DBus/Network/Test, KDE Frameworks 6 Config and IdleTime, libwayland-client development files, pkg-config and wayland-scanner. Runtime appearance changes require Plasma 6, `plasma-apply-colorscheme` and installed Breeze schemes. Installation does not install dependencies or request root.
+Requires C++17, CMake, Qt6 Widgets/DBus/Network/Test, KDE Frameworks 6 Config, IdleTime, Service, KIO and WindowSystem, libwayland-client development files, pkg-config and wayland-scanner. Runtime appearance changes require Plasma 6, `plasma-apply-colorscheme` and installed Breeze schemes. Installation does not install dependencies or request root.
 
 ## Try changes and recover
 
@@ -69,6 +73,8 @@ Finish/revert any trial first. The installer owns these files:
 
 - `~/.local/bin/kamakiri-studio`
 - `~/.local/share/applications/kamakiri-studio.desktop`
+- `~/.local/share/applications/kamakiri-launcher.desktop`
+- `~/.local/share/applications/kamakiri-dashboard.desktop`
 - `~/.config/autostart/kamakiri-studio-recovery.desktop`
 - `~/.local/share/kamakiri-studio/installation.json`
 
@@ -77,3 +83,11 @@ Remove them to uninstall. Keep recovery records and kept schemes until you no lo
 ## License
 
 Original application code is MIT. Omarchy palette attribution and permission are in [OMARCHY-PALETTES.md](OMARCHY-PALETTES.md) and [OMARCHY-LICENSE](OMARCHY-LICENSE). The vendored Wayland protocol retains its upstream MIT notice. Breeze scheme notices are preserved at runtime. Qt/KDE/Wayland libraries come from installed system packages. This project is independent of KDE, Caelestia, Ryoku and Omarchy.
+
+## Popup previews
+
+| Fluent Light | Fluent Dark |
+| --- | --- |
+| ![Fluent Light](docs/fluent-light.png) | ![Fluent Dark](docs/fluent-dark.png) |
+
+[Reference rounded launcher](docs/rounded-launcher.png). Screenshots show the app’s preview mode; launching applications is disabled in that mode.

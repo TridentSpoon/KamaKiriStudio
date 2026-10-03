@@ -9,6 +9,11 @@
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void invalidPopupLookRefused() {
+        QJsonObject request{{"preset","breeze"},{"accent","#6699cc"},{"changeColors",false},{"changePopupLook",true},{"popupStyle","fluent"},{"popupMode","light"}};
+        Studio::validateRequest(request);request["popupMode"]="'; injected()";QVERIFY_EXCEPTION_THROWN(Studio::validateRequest(request),std::runtime_error);
+    }
+
     void wallpaperChoicesAreLocalAndBounded() {
         QTemporaryDir tmp;QString path=tmp.filePath("test image;$(touch bad).png");
         QImage image(40,40,QImage::Format_RGB32);image.fill(QColor("#35b872"));QVERIFY(image.save(path));

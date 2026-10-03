@@ -5,12 +5,13 @@
 #include <QImageReader>
 #include <QUrl>
 #include <QSet>
+#include <QStandardPaths>
 #include <QRegularExpression>
 #include <stdexcept>
 namespace Studio {
 static void bad(const QString &s) {throw std::runtime_error(s.toStdString());}
 QJsonObject desktopInventory() {
-    auto text=plasmaScript(R"JS(print(JSON.stringify({types:knownWidgetTypes,desktops:desktops().map(function(d){d.currentConfigGroup=['Wallpaper',d.wallpaperPlugin,'General'];return {id:d.id,screen:d.screen,plugin:d.wallpaperPlugin,image:d.readConfig('Image',''),widgets:d.widgets().map(function(w){w.currentConfigGroup=['General'];return {id:w.id,type:w.type,owner:w.readConfig('KamaKiriTransaction','')};})};})})))JS");
+    auto text=plasmaScript(R"JS(print(JSON.stringify({types:knownWidgetTypes,panelWidgets:panels().map(function(d){return {id:d.id,widgets:d.widgets().map(function(w){w.currentConfigGroup=['General'];return {id:w.id,type:w.type,owner:w.readConfig('KamaKiriTransaction','')};})};}),desktops:desktops().map(function(d){d.currentConfigGroup=['Wallpaper',d.wallpaperPlugin,'General'];return {id:d.id,screen:d.screen,plugin:d.wallpaperPlugin,image:d.readConfig('Image',''),widgets:d.widgets().map(function(w){w.currentConfigGroup=['General'];return {id:w.id,type:w.type,owner:w.readConfig('KamaKiriTransaction','')};})};})})))JS");
     auto doc=QJsonDocument::fromJson(text.trimmed().toUtf8());
     if(!doc.isObject()) bad("Cannot read desktop wallpaper and widgets.");
     return doc.object();
@@ -56,4 +57,16 @@ QString removeTrialWidgetsScript(const QString &owner) {
     if(!QRegularExpression("^[a-f0-9-]{36}$").match(owner).hasMatch())bad("Invalid widget recovery marker.");
     return QString(R"JS(try {desktops().concat(panels()).forEach(function(d){d.widgets().forEach(function(w){w.currentConfigGroup=['General'];if(w.readConfig('KamaKiriTransaction','')===%1)w.remove();});});print('STUDIO_OK');}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(jsonString(owner));
 }
+QString panelPopupActionsScript(int id,const QString &owner) {
+    if(id<0||!QRegularExpression("^[a-f0-9-]{36}$").match(owner).hasMatch())bad("Invalid popup panel target.");
+    QJsonArray urls;
+    for(const auto &name:{"kamakiri-launcher.desktop","kamakiri-dashboard.desktop"}) {
+        auto path=QStandardPaths::locate(QStandardPaths::GenericDataLocation,"applications/"+QString(name));
+        if(path.isEmpty())bad("Install KamaKiriStudio before adding its panel buttons.");
+        urls.append(QUrl::fromLocalFile(path).toString());
+    }
+    auto data=QString::fromUtf8(QJsonDocument(urls).toJson(QJsonDocument::Compact));
+    return QString(R"JS(try {var p=panelById(%1);if(!p||knownWidgetTypes.indexOf('org.kde.plasma.icon')<0)throw new Error('Panel icon widget unavailable');var urls=%2;urls.forEach(function(url){var exists=p.widgets('org.kde.plasma.icon').some(function(w){w.currentConfigGroup=['General'];return w.readConfig('url','')===url;});if(!exists){var w;try{w=p.addWidget('org.kde.plasma.icon');w.currentConfigGroup=['General'];w.writeConfig('KamaKiriTransaction',%3);w.writeConfig('url',url);if(w.readConfig('KamaKiriTransaction','')!==%3||w.readConfig('url','')!==url)throw new Error('Could not configure panel button');}catch(e){if(w)w.remove();throw e;}}});print('STUDIO_OK');}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(id).arg(data).arg(Studio::jsonString(owner));
+}
+
 }

@@ -20,6 +20,7 @@ QImage loadWallpaper(const QString &path);
 QJsonObject wallpaperPalette(const QString &path);
 QString wallpaperScript(int id,const QString &image);
 QString addWidgetsScript(int id,const QJsonArray &types,const QString &owner);
+QString panelPopupActionsScript(int id,const QString &owner);
 QString removeTrialWidgetsScript(const QString &owner);
 QString stateRoot();
 QString configFile();

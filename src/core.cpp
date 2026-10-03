@@ -16,6 +16,7 @@
 #include <QStandardPaths>
 #include <QRegularExpression>
 #include <QUuid>
+#include <QSettings>
 #include <QUrl>
 #include <stdexcept>
 #include <sys/stat.h>
@@ -84,7 +85,8 @@ void validateRequest(const QJsonObject &r) {
     if (!QStringList{"caelestia","ryoku","breeze"}.contains(r["preset"].toString()) && r["preset"]!="wallpaper" && omarchyPalette(r["preset"].toString()).isEmpty()) fail("Unknown preset.");
     if (!QRegularExpression("^#[0-9A-Fa-f]{6}$").match(r["accent"].toString()).hasMatch()) fail("Accent must be a six-digit hex color.");
     if(r.contains("widgets")&&!r["widgets"].isArray())fail("Widget choices must be a list.");
-    if (r["changePanel"].toBool()) panelScript(r["panel"].toObject());
+    if(r["changePopupLook"].toBool()&&(!QStringList{"rounded","fluent"}.contains(r["popupStyle"].toString())||!QStringList{"desktop","light","dark"}.contains(r["popupMode"].toString())))fail("Unknown popup look.");
+    if (r["changePanel"].toBool()||r["panelPopupActions"].toBool()) panelScript(r["panel"].toObject());
     if(r["changeWallpaper"].toBool()||r["preset"]=="wallpaper") loadWallpaper(r["wallpaperPath"].toString());
     if(r["changeWallpaper"].toBool()||!r["widgets"].toArray().isEmpty()) {
         if(!r["desktopId"].isDouble()||r["desktopId"].toInt(-1)<0)fail("Choose a desktop target.");
@@ -248,8 +250,10 @@ static void restoreSnapshot(const QString &dir, bool demo) {
     auto snapshot = readJson(dir+"/snapshot.json");
     if (snapshot.isEmpty()) fail("Recovery snapshot is missing.");
     if (!demo) {
-        restoreColors(dir+"/colors-before.ini", configFile());
-        notifyPalette();
+        if(snapshot["changeColors"].toBool(true)) {restoreColors(dir+"/colors-before.ini", configFile());notifyPalette();}
+        if(snapshot["changePopupLook"].toBool()) {
+            QSettings settings;auto old=snapshot["popupBefore"].toObject();for(const auto &key:{"popup/style","popup/mode"}){auto entry=old[key].toObject();if(entry["present"].toBool())settings.setValue(key,entry["value"].toVariant());else settings.remove(key);}settings.sync();if(settings.status()!=QSettings::NoError)fail("Popup look restoration failed.");
+        }
         if (snapshot["changePanel"].toBool()) {
             plasmaScript(panelScript(snapshot["panel"].toObject()));
             auto ps = panels();
@@ -265,7 +269,7 @@ static void restoreSnapshot(const QString &dir, bool demo) {
         }
         if(snapshot["changeWidgets"].toBool()) {
             QString owner=QFileInfo(dir).fileName();plasmaScript(removeTrialWidgetsScript(owner));
-            for(const auto &d:desktopInventory()["desktops"].toArray())for(const auto &w:d.toObject()["widgets"].toArray())if(w.toObject()["owner"]==owner)fail("Widget restoration could not be verified.");
+            auto recovered=desktopInventory();for(const auto &key:{"desktops","panelWidgets"})for(const auto &d:recovered[key].toArray())for(const auto &w:d.toObject()["widgets"].toArray())if(w.toObject()["owner"]==owner)fail("Widget restoration could not be verified.");
         }
         // This is always a freshly generated file with an internal UUID, never a supplied path.
         QString id = QFileInfo(dir).fileName();
@@ -317,13 +321,21 @@ void Worker::start() {
                 if(request["changeWallpaper"].toBool()&&snapshot["desktop"].toObject()["plugin"]!="org.kde.image")fail("Wallpaper trials currently require KDE's Image wallpaper type.");
                 for(const auto &t:request["widgets"].toArray())if(!desktopData["types"].toArray().contains(t))fail("A selected widget is no longer installed.");
             }
-            copyBackup(configFile(),dir+"/colors-before.ini");
+            if(request["changeColors"].toBool(true))copyBackup(configFile(),dir+"/colors-before.ini");
+            if(request["panelPopupActions"].toBool()) {
+                bool found=false;for(const auto &p:ps)if(p.toObject()["id"]==request["panel"].toObject()["id"])found=true;
+                if(!found)fail("The popup panel target is unavailable.");
+                panelPopupActionsScript(request["panel"].toObject()["id"].toInt(),QFileInfo(dir).fileName());
+            }
+            if(request["changePopupLook"].toBool()) {QSettings settings;QJsonObject before;for(const auto &key:{"popup/style","popup/mode"})before[key]=QJsonObject{{"present",settings.contains(key)},{"value",QJsonValue::fromVariant(settings.value(key))}};snapshot["popupBefore"]=before;}
         }
         snapshot["changePanel"]=request["changePanel"].toBool();
         snapshot["changeWallpaper"]=request["changeWallpaper"].toBool();
-        snapshot["changeWidgets"]=!request["widgets"].toArray().isEmpty();
+        snapshot["changeWidgets"]=!request["widgets"].toArray().isEmpty()||request["panelPopupActions"].toBool();
+        snapshot["changeColors"]=request["changeColors"].toBool(true);
+        snapshot["changePopupLook"]=request["changePopupLook"].toBool();
         writeJson(dir+"/snapshot.json",snapshot);
-        if(!demo) {
+        if(!demo&&request["changeColors"].toBool(true)) {
             QString scheme=makeScheme(request,QFileInfo(dir).fileName());
             QString tool=QStandardPaths::findExecutable("plasma-apply-colorscheme");
             if(tool.isEmpty()) fail("KDE's color application tool is missing.");
@@ -343,12 +355,16 @@ void Worker::start() {
             if(apply.exitStatus()!=QProcess::NormalExit || apply.exitCode()!=0) fail("KDE refused the color scheme: "+QString::fromUtf8(apply.readAllStandardError()));
             KConfig check(configFile(),KConfig::SimpleConfig);
             if(check.group("General").readEntry("ColorScheme",QString())!=QFileInfo(scheme).completeBaseName()) fail("Cannot verify that the trial palette was applied.");
+        }
+        if(!demo){
             if(request["changePanel"].toBool()) {
                 plasmaScript(panelScript(request["panel"].toObject()));
                 bool ok=false;
                 for(const auto &p:panels()) if(p.toObject()==request["panel"].toObject()) ok=true;
                 if(!ok) fail("The requested panel settings could not be verified.");
             }
+            if(request["panelPopupActions"].toBool())plasmaScript(panelPopupActionsScript(request["panel"].toObject()["id"].toInt(),QFileInfo(dir).fileName()));
+            if(request["changePopupLook"].toBool()) {QSettings settings;settings.setValue("popup/style",request["popupStyle"].toString());settings.setValue("popup/mode",request["popupMode"].toString());settings.sync();if(settings.status()!=QSettings::NoError)fail("Cannot save popup look.");}
         }
         if(!demo && request["changeWallpaper"].toBool()) {
             QString image=QUrl::fromLocalFile(request["wallpaperPath"].toString()).toString();

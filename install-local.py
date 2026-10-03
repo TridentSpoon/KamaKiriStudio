@@ -39,6 +39,9 @@ def main():
         launcher:((f'[Desktop Entry]\nType=Application\nName=KamaKiriStudio\nComment=KDE appearance trials and desktop session switching\nExec={desktop_quote(binary)}\nIcon=preferences-desktop-theme-global\nTerminal=false\nCategories=Settings;DesktopSettings;Qt;KDE;\n').encode(),0o644),
         startup:((f'[Desktop Entry]\nType=Application\nName=KamaKiriStudio recovery\nComment=Restore abandoned appearance trials at KDE login\nExec={desktop_quote(binary)} --recover-all\nIcon=preferences-desktop-theme-global\nTerminal=false\nNoDisplay=true\nOnlyShowIn=KDE;\n').encode(),0o644),
     }
+    for name,mode,icon in [('KamaKiri Launcher','launcher','view-app-grid'),('KamaKiri Dashboard','dashboard','dashboard-show')]:
+        target=prefix/'share/applications'/f'kamakiri-{mode}.desktop'
+        entries[target]=((f'[Desktop Entry]\nType=Application\nName={name}\nComment=Rounded KDE desktop popup\nExec={desktop_quote(binary)} --{mode}\nIcon={icon}\nTerminal=false\nCategories=Utility;Qt;KDE;\n').encode(),0o644)
     previous={}
     if receipt.exists():
         manifest=json.loads(receipt.read_text())
@@ -56,7 +59,7 @@ def main():
         target.parent.mkdir(parents=True,exist_ok=True)
         if target.parent.is_symlink() or target.parent.stat().st_uid!=os.getuid():raise SystemExit(f'Destination directory must belong to you and not be a symlink: {target.parent}')
     for target,(data,mode) in entries.items():atomically_write(target,data,mode)
-    manifest={'app':'KamaKiriStudio','version':'0.3.0','files':{str(target):sha(data) for target,(data,_) in entries.items()}}
+    manifest={'app':'KamaKiriStudio','version':'0.4.0','files':{str(target):sha(data) for target,(data,_) in entries.items()}}
     atomically_write(receipt,(json.dumps(manifest,indent=2)+'\n').encode(),0o600)
     updater=shutil.which('update-desktop-database')
     if updater:subprocess.run([updater,str(launcher.parent)],check=False)

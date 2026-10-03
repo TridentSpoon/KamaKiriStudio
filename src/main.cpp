@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "window.h"
+#include "popup.h"
 #include "input_monitor.h"
 #include <QApplication>
 #include <QCommandLineParser>
@@ -23,10 +24,10 @@ static QString transactionPath(const QString &id) {
 }
 int main(int argc,char **argv) {
     QApplication app(argc,argv);
-    app.setApplicationName("KamaKiriStudio");app.setOrganizationName("KamaKiriStudio");app.setApplicationVersion("0.3.0");
+    app.setApplicationName("KamaKiriStudio");app.setOrganizationName("KamaKiriStudio");app.setApplicationVersion("0.4.0");
     app.setQuitOnLastWindowClosed(false);
     QCommandLineParser p;p.setApplicationDescription("KDE-first appearance trials and installed-session switching.");p.addHelpOption();p.addVersionOption();
-    p.addOptions({{"check-updates","Report the official GitHub release check without opening a window."},{"capture-page","Select a page for capture.","name"},{"demo-wallpaper","Set an image for an isolated preview check.","path"},{"demo","Preview without changing desktop settings."},{"worker","Independent trial watchdog (internal).","id"},{"recover","Restore an unfinished trial.","id"},{"recover-all","Restore abandoned trials at login without opening a window."},{"inspect","Print read-only desktop integration details."},{"ui-check","Run an isolated GUI confirmation check and capture an image.","path"},{"capture","Save a screenshot of the app, then exit.","path"},{"probe-input","Test global input reporting without changing settings."}});
+    p.addOptions({{"popup-style","Popup style: rounded or fluent.","style"},{"popup-mode","Popup mode: desktop, light or dark.","mode"},{"launcher","Open the rounded application popup."},{"dashboard","Open the rounded dashboard popup."},{"check-updates","Report the official GitHub release check without opening a window."},{"capture-page","Select a page for capture.","name"},{"demo-wallpaper","Set an image for an isolated preview check.","path"},{"demo","Preview without changing desktop settings."},{"worker","Independent trial watchdog (internal).","id"},{"recover","Restore an unfinished trial.","id"},{"recover-all","Restore abandoned trials at login without opening a window."},{"inspect","Print read-only desktop integration details."},{"ui-check","Run an isolated GUI confirmation check and capture an image.","path"},{"capture","Save a screenshot of the app, then exit.","path"},{"probe-input","Test global input reporting without changing settings."}});
     p.process(app);
     try {
         if(getuid()==0)throw std::runtime_error("Run KamaKiriStudio as your desktop user, not root.");
@@ -61,6 +62,14 @@ int main(int argc,char **argv) {
             if(Studio::readJson(dir+"/request.json")["demo"].toBool()!=demo)throw std::runtime_error("Trial mode mismatch.");
             if(p.isSet("recover")){Studio::recover(dir,demo);return 0;}
             Studio::Worker worker(dir,demo);QTimer::singleShot(0,&worker,&Studio::Worker::start);return app.exec();
+        }
+        if(p.isSet("launcher")||p.isSet("dashboard")) {
+            if(p.isSet("popup-style")&&!QStringList{"rounded","fluent"}.contains(p.value("popup-style")))throw std::runtime_error("Unknown popup style.");
+            if(p.isSet("popup-mode")&&!QStringList{"desktop","light","dark"}.contains(p.value("popup-mode")))throw std::runtime_error("Unknown popup mode.");
+            StudioPopup popup(p.isSet("launcher")?StudioPopup::Launcher:StudioPopup::Dashboard,p.isSet("demo"),nullptr,p.value("popup-style"),p.value("popup-mode"));
+            popup.show();QObject::connect(&app,&QApplication::lastWindowClosed,&app,&QCoreApplication::quit);
+            if(p.isSet("capture")){auto path=p.value("capture");QTimer::singleShot(350,&popup,[&popup,&app,path]{popup.grab().save(path);app.quit();});}
+            return app.exec();
         }
         QLockFile single(Studio::stateRoot()+"/manager.lock");single.setStaleLockTime(0);
         if(!single.tryLock(0)){QMessageBox::information(nullptr,"KamaKiriStudio","The manager is already open.");return 1;}

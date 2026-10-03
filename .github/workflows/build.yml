@@ -8,7 +8,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - name: Install build dependencies
-        run: pacman -Syu --noconfirm cmake ninja git qt6-base kconfig kidletime wayland pkgconf python breeze
+        run: pacman -Syu --noconfirm cmake ninja git qt6-base kconfig kidletime kservice kio kwindowsystem wayland pkgconf python breeze
       - uses: actions/checkout@v4
       - name: Create unprivileged test user
         run: |

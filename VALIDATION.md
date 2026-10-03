@@ -32,3 +32,7 @@ All 22 upstream palettes pass color validation and native KDE file generation ch
 ## Version 0.3.0 desktop features
 
 Unit checks validate local image formats and dimensions, deterministic wallpaper palettes, script quoting, widget allowlists, duplicate rejection and ownership markers. The live KDE test applied a wallpaper-derived palette and a new desktop widget, verified the owned widget, chose No and compared the desktop/widget inventory and all parsed kdeglobals values with the baseline: exact match. The native settings modules used by the dashboard are installed on the test machine. GUI previews of the dashboard and wallpaper/widget page were rendered and inspected. MPRIS button integration still requires a running player; no player action was simulated against a real user playback session. The app provides KDE equivalents, not Caelestia animations.
+
+## Version 0.4.0 look and layout
+
+Both unit suites pass, including Fluent Light/Dark foreground/background readability and transparent popup corners. The five simulated watchdog cases pass. A live reference-rail trial verified both owned panel buttons, kept all parsed kdeglobals values unchanged during the trial, chose No, and restored the complete panel geometry and widget inventory exactly. Light/Dark popup renders were inspected and calendar background/arrow contrast corrected. The compositor blur request is supported by KDE’s WindowSystem API; visible blur and popup placement depend on KWin and were not measured by the offscreen captures.

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "window.h"
+#include "popup.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -57,7 +58,8 @@ QWidget *StudioWindow::dashboardPage() {
     auto root=new QWidget;auto v=new QVBoxLayout(root);v->setContentsMargins(0,0,0,0);v->setSpacing(15);
     v->addWidget(text("Your desktop, at a glance.","hero"));v->addWidget(text("Live widgets and controls, connected to your existing Plasma session.","subtitle"));
     auto clock=box();auto cv=new QVBoxLayout(clock);clockLabel=text("","hero");dateLabel=text("","subtitle");cv->addWidget(clockLabel);cv->addWidget(dateLabel);systemLabel=text("");cv->addWidget(systemLabel);v->addWidget(clock);
-    auto launcher=new QPushButton("Search apps, files and actions · KRunner");launcher->setObjectName("primary");launcher->setEnabled(!demoMode&&!QStandardPaths::findExecutable("krunner").isEmpty());
+    auto popups=new QHBoxLayout;for(const auto &entry:QList<QStringList>{{"Rounded app launcher","launcher"},{"Rounded dashboard","dashboard"}}){auto button=new QPushButton(entry[0]);popups->addWidget(button);connect(button,&QPushButton::clicked,this,[this,mode=entry[1]]{auto popup=new StudioPopup(mode=="launcher"?StudioPopup::Launcher:StudioPopup::Dashboard,demoMode,this,popupStyle->currentData().toString(),popupMode->currentData().toString());popup->setAttribute(Qt::WA_DeleteOnClose);popup->show();});}v->addLayout(popups);
+    auto launcher=new QPushButton("KRunner · apps, files and actions");launcher->setObjectName("primary");launcher->setEnabled(!demoMode&&!QStandardPaths::findExecutable("krunner").isEmpty());
     connect(launcher,&QPushButton::clicked,this,[this]{if(!QProcess::startDetached(QStandardPaths::findExecutable("krunner"),{}))error("KRunner could not be opened.");});v->addWidget(launcher);
     auto media=box();auto mv=new QVBoxLayout(media);mv->addWidget(text("Now playing","section"));playerSelect=new QComboBox;mv->addWidget(playerSelect);trackLabel=text("Open a media player to see its controls here.");mv->addWidget(trackLabel);
     auto controls=new QHBoxLayout;for(const auto &entry:QList<QStringList>{{"Previous","Previous"},{"Play / pause","PlayPause"},{"Next","Next"}}){auto b=new QPushButton(entry[0]);mediaButtons.append(b);b->setEnabled(false);controls->addWidget(b);connect(b,&QPushButton::clicked,this,[this,method=entry[1]]{mediaAction(method);});}mv->addLayout(controls);v->addWidget(media);

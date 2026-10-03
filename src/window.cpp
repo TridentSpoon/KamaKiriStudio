@@ -21,6 +21,10 @@
 #include <QScrollArea>
 #include <QTimer>
 #include <algorithm>
+#include <QSettings>
+#include <KConfig>
+#include <KConfigGroup>
+#include "popup.h"
 #include <signal.h>
 #include <errno.h>
 
@@ -76,7 +80,7 @@ void DesktopPreview::paintEvent(QPaintEvent *) {
 
 StudioWindow::StudioWindow(bool demo,QWidget *parent):QMainWindow(parent),demoMode(demo) {
     setWindowTitle(demo?"KamaKiriStudio — Preview mode":"KamaKiriStudio");
-    resize(1080,810);setMinimumSize(860,690);
+    resize(1080,920);setMinimumSize(860,810);
     setStyleSheet(R"(
       QMainWindow,QDialog {background:#15151e;color:#efedf7;}
       QWidget {font-family:Sans Serif;font-size:13px;color:#efedf7;}
@@ -94,6 +98,7 @@ StudioWindow::StudioWindow(bool demo,QWidget *parent):QMainWindow(parent),demoMo
       QCheckBox {spacing:8px;} QTabBar::tab {padding:12px;}
       QScrollArea {border:none;background:transparent;} QScrollArea>QWidget>QWidget {background:transparent;}
     )");
+    referenceManagerStyle=styleSheet();
     auto central=new QWidget;setCentralWidget(central);
     auto layout=new QHBoxLayout(central);layout->setContentsMargins(22,22,22,22);layout->setSpacing(25);
     auto side=new QVBoxLayout;side->setSpacing(10);
@@ -123,6 +128,7 @@ QWidget *StudioWindow::appearancePage() {
     auto root=new QWidget;auto v=new QVBoxLayout(root);v->setContentsMargins(0,0,0,0);v->setSpacing(12);
     v->addWidget(label("Your desktop, reimagined.","hero"));
     v->addWidget(label("Choose a complete color palette, then adjust your Plasma panel layout.","subtitle"));
+    colorEnabled=new QCheckBox("Include KDE color changes in this trial");colorEnabled->setChecked(true);v->addWidget(colorEnabled);
     themeSelect=new QComboBox;
     themeSelect->addItem("Caelestia inspired · Lavender","caelestia");
     themeSelect->addItem("Ryoku inspired · Graphite and rose","ryoku");
@@ -136,7 +142,7 @@ QWidget *StudioWindow::appearancePage() {
     preview=new DesktopPreview;v->addWidget(preview,1);
     auto options=card();auto form=new QFormLayout(options);form->setContentsMargins(16,12,16,12);form->setVerticalSpacing(10);
     accentButton=new QPushButton("Accent · #c4a7ff");
-    connect(accentButton,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(accent,this,"Choose an accent");if(c.isValid()){accent=c;updatePreview();}});
+    connect(accentButton,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(accent,this,"Choose an accent");if(c.isValid()){accent=c;colorEnabled->setChecked(true);updatePreview();}});
     light=new QCheckBox("Light surfaces");connect(light,&QCheckBox::toggled,this,&StudioWindow::updatePreview);
     auto paletteRow=new QHBoxLayout;paletteRow->addWidget(accentButton);paletteRow->addWidget(light);paletteRow->addStretch();form->addRow("Palette",paletteRow);
     panelEnabled=new QCheckBox("Adjust one existing panel");panelEnabled->setChecked(true);
@@ -152,6 +158,19 @@ QWidget *StudioWindow::appearancePage() {
         auto p=panelSelect->currentData().toJsonObject();
         if(!p.isEmpty()){edgeSelect->setCurrentText(p["location"].toString());height->setValue(p["height"].toInt());floating->setChecked(p["floating"].toBool());}
     });
+    auto presetLayout=new QComboBox;presetLayout->addItems({"Custom panel layout","Slim left rail · reference look","Floating bottom bar"});form->addRow("Panel preset",presetLayout);
+    panelActions=new QCheckBox("Add launcher and dashboard buttons to this panel");form->addRow("Popup access",panelActions);
+    popupStyle=new QComboBox;popupStyle->addItem("Reference rounded","rounded");popupStyle->addItem("Fluent inspired","fluent");
+    popupMode=new QComboBox;popupMode->addItem("Follow desktop","desktop");popupMode->addItem("Light","light");popupMode->addItem("Dark","dark");
+    QSettings popupSettings;popupStyle->setCurrentIndex(qMax(0,popupStyle->findData(popupSettings.value("popup/style","rounded"))));popupMode->setCurrentIndex(qMax(0,popupMode->findData(popupSettings.value("popup/mode","desktop"))));
+    connect(popupStyle,&QComboBox::currentIndexChanged,this,[this]{colorEnabled->setChecked(false);refreshManagerLook();});connect(popupMode,&QComboBox::currentIndexChanged,this,[this]{colorEnabled->setChecked(false);refreshManagerLook();});
+    refreshManagerLook();
+    auto popupRow=new QHBoxLayout;popupRow->addWidget(popupStyle);popupRow->addWidget(popupMode);form->addRow("Popup look",popupRow);
+    auto previews=new QHBoxLayout;
+    for(const auto &entry:QList<QStringList>{{"Preview launcher","launcher"},{"Preview dashboard","dashboard"}}){auto button=new QPushButton(entry[0]);previews->addWidget(button);connect(button,&QPushButton::clicked,this,[this,kind=entry[1]]{auto popup=new StudioPopup(kind=="launcher"?StudioPopup::Launcher:StudioPopup::Dashboard,demoMode,this,popupStyle->currentData().toString(),popupMode->currentData().toString());popup->setAttribute(Qt::WA_DeleteOnClose);popup->show();});}
+    form->addRow("Try popup look",previews);
+    connect(presetLayout,&QComboBox::currentIndexChanged,this,[this](int i){if(i==0)return;panelEnabled->setChecked(true);edgeSelect->setCurrentText(i==1?"left":"bottom");height->setValue(i==1?40:48);floating->setChecked(true);panelActions->setChecked(true);colorEnabled->setChecked(false);updatePreview();});
+    connect(colorEnabled,&QCheckBox::toggled,this,&StudioWindow::updatePreview);
     v->addWidget(options);
     notice=label("Select a style, then try it on your desktop.","subtitle");notice->setMinimumHeight(34);v->addWidget(notice);
     auto bottom=new QHBoxLayout;
@@ -193,7 +212,7 @@ QWidget *StudioWindow::recoveryPage() {
             wallpaperPath=r["wallpaperPath"].toString();selectedWallpaper=wallpaperPath.isEmpty()?QImage():loadWallpaper(wallpaperPath);derivedPalette=wallpaperPath.isEmpty()?QJsonObject():wallpaperPalette(wallpaperPath);wallpaperEnabled->setEnabled(!wallpaperPath.isEmpty());wallpaperEnabled->setChecked(r["changeWallpaper"].toBool());
             if(!wallpaperPath.isEmpty())wallpaperPreview->setPixmap(QPixmap::fromImage(loadWallpaper(wallpaperPath)).scaled(700,210,Qt::KeepAspectRatio,Qt::SmoothTransformation));
             for(auto choice:widgetChoices)choice->setChecked(choice->isEnabled()&&r["widgets"].toArray().contains(choice->property("plugin").toString()));
-            choosePreset(r["preset"].toString());accent=QColor(r["accent"].toString());light->setChecked(r["light"].toBool());
+            choosePreset(r["preset"].toString());panelActions->setChecked(r["panelPopupActions"].toBool());popupStyle->setCurrentIndex(qMax(0,popupStyle->findData(r["popupStyle"].toString("rounded"))));popupMode->setCurrentIndex(qMax(0,popupMode->findData(r["popupMode"].toString("desktop"))));colorEnabled->setChecked(r["changeColors"].toBool(true));accent=QColor(r["accent"].toString());light->setChecked(r["light"].toBool());
             auto p=r["panel"].toObject();edgeSelect->setCurrentText(p["location"].toString("bottom"));height->setValue(p["height"].toInt(44));floating->setChecked(p["floating"].toBool());
             // Panel IDs are machine-local. Preserve the currently selected local panel.
             panelEnabled->setChecked(r["changePanel"].toBool()&&panelSelect->count()>0);updatePreview();pages->setCurrentIndex(0);
@@ -227,6 +246,7 @@ void StudioWindow::refreshInventory() {
 void StudioWindow::choosePreset(const QString &id) {
     if(id=="wallpaper"&&wallpaperPath.isEmpty()){themeSelect->setCurrentIndex(themeSelect->findData(preset));notice->setText("Choose an image in Wallpaper and widgets first.");return;}
     preset=id;
+    if(colorEnabled)colorEnabled->setChecked(true);
     themeSelect->setCurrentIndex(themeSelect->findData(id));
     auto palette=omarchyPalette(id);
     if(id=="wallpaper")palette=derivedPalette;
@@ -243,13 +263,21 @@ void StudioWindow::updatePreview() {
     preview->customPalette=preset=="wallpaper"?derivedPalette:QJsonObject();
     preview->wallpaper=(!wallpaperPath.isEmpty()&&wallpaperEnabled&&wallpaperEnabled->isChecked())?selectedWallpaper:QImage();
     preview->preset=preset;preview->accent=accent;preview->light=light->isChecked();preview->edge=edgeSelect->currentText();preview->floating=floating->isChecked();preview->update();
+    if(!colorEnabled->isChecked()) {
+        KConfig globals(configFile(),KConfig::SimpleConfig);
+        auto read=[&](const char *group,const char *key,const QColor &fallback){auto parts=globals.group(group).readEntry(key,QString()).split(',');if(parts.size()<3)return fallback;QColor c(parts[0].toInt(),parts[1].toInt(),parts[2].toInt());return c.isValid()?c:fallback;};
+        QColor bg=read("Colors:Window","BackgroundNormal",palette().color(QPalette::Window));
+        QColor fg=read("Colors:Window","ForegroundNormal",palette().color(QPalette::WindowText));
+        preview->customPalette={{"background",bg.name()},{"dark_background",bg.darker(110).name()},{"lighter_background",bg.lightnessF()<.5?bg.lighter(135).name():bg.lighter(105).name()},{"foreground",fg.name()}};
+        preview->accent=read("General","AccentColor",read("Colors:Selection","BackgroundNormal",palette().color(QPalette::Highlight)));preview->light=bg.lightnessF()>.5;
+    }
     accentButton->setText("Accent · "+accent.name());
 }
 QJsonObject StudioWindow::desired() const {
     auto p=panelSelect->currentData().toJsonObject();
     p["location"]=edgeSelect->currentText();p["height"]=height->value();p["floating"]=floating->isChecked();
     QJsonArray widgets;for(auto choice:widgetChoices)if(choice->isEnabled()&&choice->isChecked())widgets.append(choice->property("plugin").toString());
-    return {{"preset",preset},{"accent",accent.name()},{"light",light->isChecked()},{"changePanel",panelEnabled->isChecked()&&panelSelect->count()>0},{"panel",p},{"wallpaperPath",wallpaperPath},{"changeWallpaper",wallpaperEnabled->isChecked()&&!wallpaperPath.isEmpty()},{"desktopId",desktopSelect->currentData().toInt()},{"widgets",widgets}};
+    return {{"preset",preset},{"accent",accent.name()},{"light",light->isChecked()},{"changePanel",panelEnabled->isChecked()&&panelSelect->count()>0},{"panel",p},{"wallpaperPath",wallpaperPath},{"changeWallpaper",wallpaperEnabled->isChecked()&&!wallpaperPath.isEmpty()},{"desktopId",desktopSelect->currentData().toInt()},{"widgets",widgets},{"changeColors",colorEnabled->isChecked()},{"panelPopupActions",panelActions->isChecked()},{"changePopupLook",true},{"popupStyle",popupStyle->currentData().toString()},{"popupMode",popupMode->currentData().toString()}};
 }
 void StudioWindow::beginTrial() {
     if(busy)return;
@@ -389,7 +417,13 @@ void StudioWindow::setDemoWallpaper(const QString &path) {
 }
 void StudioWindow::capture(const QString &path) {grab().save(path);}
 void StudioWindow::runUiCheck(const QString &path) {
-    QTimer::singleShot(100,this,[this,path]{capture(path);beginTrial();});
+    QTimer::singleShot(100,this,[this,path]{
+        int previousStyle=popupStyle->currentIndex();bool previousColors=colorEnabled->isChecked();
+        popupStyle->setCurrentIndex(0);popupStyle->setCurrentIndex(1);
+        if(colorEnabled->isChecked()){QCoreApplication::exit(2);return;}
+        popupStyle->setCurrentIndex(previousStyle);colorEnabled->setChecked(previousColors);
+        capture(path);beginTrial();
+    });
     auto check=new QTimer(this);check->setInterval(100);auto elapsed=new QElapsedTimer;elapsed->start();
     connect(check,&QTimer::timeout,this,[this,check,elapsed,path]{
         if(confirmation) {
@@ -399,4 +433,19 @@ void StudioWindow::runUiCheck(const QString &path) {
         if(!busy&&elapsed->elapsed()>1000){check->stop();delete elapsed;QCoreApplication::exit(0);}
         else if(elapsed->elapsed()>10000){check->stop();delete elapsed;QCoreApplication::exit(2);}
     });check->start();
+}
+
+void StudioWindow::refreshManagerLook() {
+    if(popupStyle->currentData()!="fluent"){setStyleSheet(referenceManagerStyle);return;}
+    bool lightMode=popupMode->currentData()=="light"||(popupMode->currentData()=="desktop"&&palette().color(QPalette::Window).lightnessF()>=.5);
+    QString css=referenceManagerStyle;
+    const QList<QPair<QString,QString>> replacements{
+        {"#15151e",lightMode?"#f3f3f3":"#202020"},{"#efedf7",lightMode?"#1b1b1b":"#f5f5f5"},
+        {"#20202c",lightMode?"#ffffff":"#2b2b2b"},{"#353344",lightMode?"#dedede":"#454545"},
+        {"#474156",lightMode?"#d4d4d4":"#505050"},{"#a8a3b8",lightMode?"#606060":"#b4b4b4"},
+        {"#2a2839",lightMode?"#e9e9e9":"#333333"},{"#242330",lightMode?"#ffffff":"#292929"},
+        {"#373247",lightMode?"#dddddd":"#444444"},{"#302740",lightMode?"#e4e4e4":"#3c3c3c"},
+        {"#423454",lightMode?"#dfdfdf":"#444444"},{"#51416a",lightMode?"#dddddd":"#4a4a4a"}};
+    for(const auto &entry:replacements)css.replace(entry.first,entry.second);
+    css.replace("border-radius:12px","border-radius:8px");setStyleSheet(css);
 }

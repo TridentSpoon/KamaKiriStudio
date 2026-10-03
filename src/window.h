@@ -39,6 +39,8 @@ protected:
     bool eventFilter(QObject *watched,QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 private:
+    QString referenceManagerStyle;
+    void refreshManagerLook();
     bool demoMode, busy=false, inputSeen=false, closing=false;
     QString preset="caelestia", transaction, decision, wallpaperPath;
     QImage selectedWallpaper;
@@ -58,7 +60,8 @@ private:
     DesktopPreview *preview;
     QPushButton *apply, *accentButton, *switchButton;
     QLabel *notice, *confirmationText, *trialExplanation;
-    QComboBox *themeSelect, *panelSelect, *edgeSelect;
+    QComboBox *themeSelect, *panelSelect, *edgeSelect, *popupStyle, *popupMode;
+    QCheckBox *colorEnabled=nullptr, *panelActions;
     QCheckBox *panelEnabled, *floating, *light;
     QSpinBox *height;
     QListWidget *sessionList;
