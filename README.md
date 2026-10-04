@@ -1,4 +1,6 @@
-# KamaKiriStudio 0.4.0
+# KamaKiriStudio 0.5.0 development
+
+**Development snapshot:** desktop-look switching is experimental. Crashes, duplicated controls and incomplete recovery have been reported. Use an isolated Plasma session for testing; see [KNOWN-ISSUES.md](KNOWN-ISSUES.md). The latest published release remains v0.4.1.
 
 A native KDE desktop studio that keeps Plasma and KWin as its base. Inspired by Caelestia and Ryoku, with 22 official Omarchy color palettes, including Osaka Jade.
 
@@ -16,7 +18,7 @@ The launcher and dashboard now open as separate rounded, frameless popups, with 
 
 In **Appearance**, use **Popup look** and **Preview launcher/dashboard**. The **Slim left rail** panel preset selects a 40px floating panel and adds two native launch buttons. A **Floating bottom bar** preset is also available. These presets and popup-look changes turn off **Include KDE color changes** so your palette stays unchanged; you can enable it explicitly. Apply & try uses the existing Yes/No recovery flow for panel geometry, popup preferences and newly added panel buttons. Existing widgets are preserved. The panel itself uses your installed Plasma theme’s rounded floating shape.
 
-The app launcher filters installed application metadata and opens the selected app through KDE’s ApplicationLauncherJob. Search input is never treated as a shell command. The popup dashboard has calendar, media and CPU/memory/disk/network pages. GPU, weather and audio visualizers are not included. The manager also previews a Fluent-inspired appearance when that popup style is selected.
+The app launcher filters installed application metadata and opens the selected app through KDE’s ApplicationLauncherJob. Search input is never treated as a shell command. The popup dashboard has calendar, media and CPU/memory/disk/network pages. GPU, weather and audio visualizers are not included. The manager follows the KDE system theme independently of popup selection.
 
 ## Get started
 
@@ -32,7 +34,7 @@ python3 install-local.py
 
 Open **KamaKiriStudio** from the Applications menu, or run `./launch.sh`. Use `./launch.sh --demo` for a preview that leaves appearance unchanged.
 
-Requires C++17, CMake, Qt6 Widgets/DBus/Network/Test, KDE Frameworks 6 Config, IdleTime, Service, KIO and WindowSystem, libwayland-client development files, pkg-config and wayland-scanner. Runtime appearance changes require Plasma 6, `plasma-apply-colorscheme` and installed Breeze schemes. Installation does not install dependencies or request root.
+Requires C++17, CMake, Qt6 Widgets/DBus/Network/Test/QuickWidgets, KDE Frameworks 6 Config, IdleTime, Service, KIO and WindowSystem, libwayland-client development files, pkg-config and wayland-scanner. Runtime appearance changes require Plasma 6, `plasma-apply-colorscheme` and installed Breeze schemes. Installation does not install dependencies or request root.
 
 ## Try changes and recover
 
@@ -93,3 +95,5 @@ Original application code is MIT. Omarchy palette attribution and permission are
 [Reference rounded launcher](docs/rounded-launcher.png). Screenshots show the app’s preview mode; launching applications is disabled in that mode.
 
 The Studio manager follows the active KDE system colors, font and widget style. Rounded/Fluent popup choices affect the launcher and dashboard only.
+
+Desktop look now includes **Default Plasma**, using native KDE Application Launcher and Breeze styling, and **Kamakiri style**, the independently developed rounded layout. Existing Caelestia identifiers remain internal for compatibility with saved profiles. These experimental look changes are pending recovery validation; no live appearance is applied by selecting a look.

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"><kcfgfile name=""/><group name="General">
+<entry name="look" type="String"><default>fluent11</default></entry>
+<entry name="mode" type="String"><default>desktop</default></entry>
+<entry name="favorites" type="StringList"><default>org.kde.dolphin.desktop,systemsettings.desktop,org.kde.konsole.desktop,org.kde.kate.desktop</default></entry>
+</group></kcfg>

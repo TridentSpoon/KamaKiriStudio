@@ -38,7 +38,7 @@ QWidget *StudioWindow::desktopPage() {
         try {auto image=loadWallpaper(path);wallpaperPath=QFileInfo(path).canonicalFilePath();selectedWallpaper=image;derivedPalette=wallpaperPalette(wallpaperPath);
             wallpaperPreview->setPixmap(QPixmap::fromImage(image).scaled(700,210,Qt::KeepAspectRatio,Qt::SmoothTransformation));
             wallpaperEnabled->setEnabled(true);wallpaperEnabled->setChecked(true);
-            if(wallpaperColors->isChecked())choosePreset("wallpaper");
+            themeWallpaperEnabled->setChecked(false);if(wallpaperColors->isChecked())choosePreset("wallpaper");
             updatePreview();
         }catch(const std::exception &e){error(e.what());}
     });

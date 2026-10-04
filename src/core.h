@@ -12,6 +12,14 @@
 
 namespace Studio {
 class InputMonitor;
+QJsonObject desktopPalette(const QString &preset,const QString &mode);
+QStringList desktopLooks();
+QString associatedWallpaper(const QString &preset);
+QJsonObject snapshotLook(int panelId);
+QString applyLookScript(int id,const QString &look,const QString &mode,const QString &owner);
+QString restoreLookScript(const QJsonObject &saved,const QString &owner);
+void applyLook(const QJsonObject &request,const QString &owner);
+void restoreLook(const QJsonObject &saved,const QString &owner);
 QJsonArray omarchyPalettes();
 QJsonObject omarchyPalette(const QString &id);
 QJsonObject desktopInventory();

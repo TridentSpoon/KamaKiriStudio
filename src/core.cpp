@@ -82,7 +82,9 @@ QString panelScript(const QJsonObject &p) {
         .arg(id).arg(jsonString(edge)).arg(height).arg(p["floating"].toBool()?"true":"false");
 }
 void validateRequest(const QJsonObject &r) {
-    if (!QStringList{"caelestia","ryoku","breeze"}.contains(r["preset"].toString()) && r["preset"]!="wallpaper" && omarchyPalette(r["preset"].toString()).isEmpty()) fail("Unknown preset.");
+    if(!r["desktopLook"].toString().isEmpty()){if(!desktopLooks().contains(r["desktopLook"].toString())||!r["changePanel"].toBool())fail("Choose a panel for the desktop look.");}
+
+    if (!QStringList{"caelestia","ryoku","breeze","windows"}.contains(r["preset"].toString()) && r["preset"]!="wallpaper" && omarchyPalette(r["preset"].toString()).isEmpty()) fail("Unknown preset.");
     if (!QRegularExpression("^#[0-9A-Fa-f]{6}$").match(r["accent"].toString()).hasMatch()) fail("Accent must be a six-digit hex color.");
     if(r.contains("widgets")&&!r["widgets"].isArray())fail("Widget choices must be a list.");
     if(r["changePopupLook"].toBool()&&(!QStringList{"rounded","fluent"}.contains(r["popupStyle"].toString())||!QStringList{"desktop","light","dark"}.contains(r["popupMode"].toString())))fail("Unknown popup look.");
@@ -153,7 +155,7 @@ static QColor mix(const QColor &a, const QColor &b, double f) {
 }
 QString makeScheme(const QJsonObject &r, const QString &id) {
     if (!QRegularExpression("^[a-f0-9-]{36}$").match(id).hasMatch()) fail("Invalid transaction ID.");
-    auto palette = omarchyPalette(r["preset"].toString());
+    auto palette = desktopPalette(r["preset"].toString(),r["desktopLook"].toString().isEmpty()?"desktop":r["popupMode"].toString("desktop"));
     if(r["preset"]=="wallpaper") palette=wallpaperPalette(r["wallpaperPath"].toString());
     bool light = palette.isEmpty() ? r["light"].toBool() : palette["mode"] == "light";
     QString base = QStandardPaths::locate(QStandardPaths::GenericDataLocation, light?"color-schemes/BreezeLight.colors":"color-schemes/BreezeDark.colors");
@@ -252,8 +254,9 @@ static void restoreSnapshot(const QString &dir, bool demo) {
     if (!demo) {
         if(snapshot["changeColors"].toBool(true)) {restoreColors(dir+"/colors-before.ini", configFile());notifyPalette();}
         if(snapshot["changePopupLook"].toBool()) {
-            QSettings settings;auto old=snapshot["popupBefore"].toObject();for(const auto &key:{"popup/style","popup/mode"}){auto entry=old[key].toObject();if(entry["present"].toBool())settings.setValue(key,entry["value"].toVariant());else settings.remove(key);}settings.sync();if(settings.status()!=QSettings::NoError)fail("Popup look restoration failed.");
+            QSettings settings;auto old=snapshot["popupBefore"].toObject();for(const auto &key:{"popup/style","popup/mode","desktop/look"}){auto entry=old[key].toObject();if(entry["present"].toBool())settings.setValue(key,entry["value"].toVariant());else settings.remove(key);}settings.sync();if(settings.status()!=QSettings::NoError)fail("Popup look restoration failed.");
         }
+        if(snapshot["changeDesktopLook"].toBool())restoreLook(snapshot["desktopLookBefore"].toObject(),QFileInfo(dir).fileName());
         if (snapshot["changePanel"].toBool()) {
             plasmaScript(panelScript(snapshot["panel"].toObject()));
             auto ps = panels();
@@ -327,11 +330,13 @@ void Worker::start() {
                 if(!found)fail("The popup panel target is unavailable.");
                 panelPopupActionsScript(request["panel"].toObject()["id"].toInt(),QFileInfo(dir).fileName());
             }
-            if(request["changePopupLook"].toBool()) {QSettings settings;QJsonObject before;for(const auto &key:{"popup/style","popup/mode"})before[key]=QJsonObject{{"present",settings.contains(key)},{"value",QJsonValue::fromVariant(settings.value(key))}};snapshot["popupBefore"]=before;}
+            if(!request["desktopLook"].toString().isEmpty())snapshot["desktopLookBefore"]=snapshotLook(request["panel"].toObject()["id"].toInt());
+            if(request["changePopupLook"].toBool()) {QSettings settings;QJsonObject before;for(const auto &key:{"popup/style","popup/mode","desktop/look"})before[key]=QJsonObject{{"present",settings.contains(key)},{"value",QJsonValue::fromVariant(settings.value(key))}};snapshot["popupBefore"]=before;}
         }
+        snapshot["changeDesktopLook"]=!request["desktopLook"].toString().isEmpty();
         snapshot["changePanel"]=request["changePanel"].toBool();
         snapshot["changeWallpaper"]=request["changeWallpaper"].toBool();
-        snapshot["changeWidgets"]=!request["widgets"].toArray().isEmpty()||request["panelPopupActions"].toBool();
+        snapshot["changeWidgets"]=!request["widgets"].toArray().isEmpty()||request["panelPopupActions"].toBool()||!request["desktopLook"].toString().isEmpty();
         snapshot["changeColors"]=request["changeColors"].toBool(true);
         snapshot["changePopupLook"]=request["changePopupLook"].toBool();
         writeJson(dir+"/snapshot.json",snapshot);
@@ -363,8 +368,9 @@ void Worker::start() {
                 for(const auto &p:panels()) if(p.toObject()==request["panel"].toObject()) ok=true;
                 if(!ok) fail("The requested panel settings could not be verified.");
             }
+            if(!request["desktopLook"].toString().isEmpty())applyLook(request,QFileInfo(dir).fileName());
             if(request["panelPopupActions"].toBool())plasmaScript(panelPopupActionsScript(request["panel"].toObject()["id"].toInt(),QFileInfo(dir).fileName()));
-            if(request["changePopupLook"].toBool()) {QSettings settings;settings.setValue("popup/style",request["popupStyle"].toString());settings.setValue("popup/mode",request["popupMode"].toString());settings.sync();if(settings.status()!=QSettings::NoError)fail("Cannot save popup look.");}
+            if(request["changePopupLook"].toBool()) {QSettings settings;settings.setValue("desktop/look",request["desktopLook"].toString());settings.setValue("popup/style",request["popupStyle"].toString());settings.setValue("popup/mode",request["popupMode"].toString());settings.sync();if(settings.status()!=QSettings::NoError)fail("Cannot save popup look.");}
         }
         if(!demo && request["changeWallpaper"].toBool()) {
             QString image=QUrl::fromLocalFile(request["wallpaperPath"].toString()).toString();

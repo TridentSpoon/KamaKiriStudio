@@ -17,7 +17,7 @@
 
 class DesktopPreview : public QWidget {
 public:
-    QString preset = "caelestia", edge = "bottom";
+    QString look, preset = "caelestia", edge = "bottom";
     QImage wallpaper;
     QJsonObject customPalette;
     QColor accent = QColor("#c4a7ff");
@@ -32,6 +32,7 @@ public:
     explicit StudioWindow(bool demo, QWidget *parent=nullptr);
     void capture(const QString &path);
     void showPreviewPage(const QString &name);
+    void setDemoLook(const QString &look);
     void setDemoWallpaper(const QString &path);
     void reportUpdateCheck();
     void runUiCheck(const QString &path);
@@ -45,7 +46,7 @@ private:
     QJsonObject derivedPalette;
     QComboBox *desktopSelect, *playerSelect;
     QCheckBox *wallpaperEnabled=nullptr, *wallpaperColors=nullptr;
-    QLabel *wallpaperPreview, *clockLabel, *dateLabel, *systemLabel, *trackLabel;
+    QLabel *wallpaperPreview=nullptr, *clockLabel, *dateLabel, *systemLabel, *trackLabel;
     QPushButton *desktopApply;
     QList<QCheckBox*> widgetChoices;
     QList<QPushButton*> mediaButtons;
@@ -58,6 +59,10 @@ private:
     DesktopPreview *preview;
     QPushButton *apply, *accentButton, *switchButton;
     QLabel *notice, *confirmationText, *trialExplanation;
+    QComboBox *lookSelect;
+    QCheckBox *themeWallpaperEnabled;
+    void chooseLook();
+    void syncThemeWallpaper();
     QComboBox *themeSelect, *panelSelect, *edgeSelect, *popupStyle, *popupMode;
     QCheckBox *colorEnabled=nullptr, *panelActions;
     QCheckBox *panelEnabled, *floating, *light;

@@ -9,6 +9,14 @@
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void desktopLooksRequireKnownLayoutAndPanel() {
+        QJsonObject request{{"preset","windows"},{"accent","#0078d4"},{"desktopLook","fluent11"},{"changePanel",true},{"panel",QJsonObject{{"id",1},{"height",48},{"location","bottom"},{"floating",false}}}};
+        Studio::validateRequest(request);request["desktopLook"]="'; bad()";QVERIFY_EXCEPTION_THROWN(Studio::validateRequest(request),std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(Studio::applyLookScript(1,"fluent11","bad","12345678-1234-1234-1234-123456789abc"),std::runtime_error);
+        auto light=Studio::desktopPalette("omarchy-osaka-jade","light"),dark=Studio::desktopPalette("omarchy-osaka-jade","dark");
+        QCOMPARE(light["accent"],dark["accent"]);QVERIFY(QColor(light["background"].toString()).lightnessF()>.8);QVERIFY(QColor(dark["background"].toString()).lightnessF()<.2);
+    }
+
     void invalidPopupLookRefused() {
         QJsonObject request{{"preset","breeze"},{"accent","#6699cc"},{"changeColors",false},{"changePopupLook",true},{"popupStyle","fluent"},{"popupMode","light"}};
         Studio::validateRequest(request);request["popupMode"]="'; injected()";QVERIFY_EXCEPTION_THROWN(Studio::validateRequest(request),std::runtime_error);

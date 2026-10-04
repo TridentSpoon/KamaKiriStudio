@@ -20,7 +20,7 @@ QWidget *StudioWindow::aboutPage() {
     auto root=new QWidget;auto v=new QVBoxLayout(root);v->setContentsMargins(0,0,0,0);v->setSpacing(16);
     auto title=new QLabel("KamaKiriStudio");title->setObjectName("hero");v->addWidget(title);
     auto summary=new QLabel("Version "+QApplication::applicationVersion()+"\nA desktop studio built on KDE Plasma and KWin.");summary->setWordWrap(true);v->addWidget(summary);
-    auto details=new QLabel("Caelestia and Ryoku inspired styling, Omarchy palettes, local wallpapers, native Plasma widgets, KRunner and media controls.\n\nBuilt with Qt "+QString(qVersion())+" and KDE Frameworks. Project code: MIT license. Omarchy palette and Wayland protocol credits ship with the project.\n\nAppearance trials use an independent recovery worker. Yes keeps your changes; No restores them. The first input removes the initial 15-second inactivity timeout.");details->setWordWrap(true);v->addWidget(details);
+    auto details=new QLabel("Kamakiri, Fluent and native Plasma desktop looks, Omarchy palettes and associated wallpapers, native Plasma widgets, KRunner and media controls.\n\nBuilt with Qt "+QString(qVersion())+" and KDE Frameworks. Project code: MIT license. Omarchy palette and Wayland protocol credits ship with the project.\n\nAppearance trials use an independent recovery worker. Yes keeps your changes; No restores them. The first input removes the initial 15-second inactivity timeout.");details->setWordWrap(true);v->addWidget(details);
     auto update=new QFrame;update->setObjectName("card");auto uv=new QVBoxLayout(update);
     auto heading=new QLabel("Updates");heading->setObjectName("section");uv->addWidget(heading);
     updateStatus=new QLabel("Check official GitHub releases or the local project build. Updates are installed only when you choose to do so.");updateStatus->setWordWrap(true);uv->addWidget(updateStatus);
@@ -41,6 +41,7 @@ void StudioWindow::checkLocalUpdate() {
         if(release.isEmpty()){updateStatus->setText("Local release source is unavailable. You can check GitHub releases instead.");return;}
         auto version=release["version"].toString();qsizetype suffix=0;auto candidate=QVersionNumber::fromString(version,&suffix);
         if(candidate.isNull()||suffix!=version.size()||release["app"]!="KamaKiriStudio")throw std::runtime_error("Invalid local release manifest.");
+        if(release["status"]=="development"){updateStatus->setText("Development source: "+version+". No verified local release artifact is published for this build. Check GitHub for stable releases.");return;}
         QFile binary(root+"/bin/kamakiri-studio");if(!binary.open(QIODevice::ReadOnly)||binary.size()>32*1024*1024)throw std::runtime_error("Local release binary is unavailable.");
         QCryptographicHash hash(QCryptographicHash::Sha256);if(!hash.addData(&binary)||QString::fromLatin1(hash.result().toHex())!=release["sha256"].toString())throw std::runtime_error("Local release integrity check failed.");
         int comparison=QVersionNumber::compare(candidate,QVersionNumber::fromString(QApplication::applicationVersion()));

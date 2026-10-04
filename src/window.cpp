@@ -22,6 +22,8 @@
 #include <QTimer>
 #include <algorithm>
 #include <QSettings>
+#include <QQuickWidget>
+#include <QQuickItem>
 #include <KConfig>
 #include <KConfigGroup>
 #include "popup.h"
@@ -104,23 +106,29 @@ StudioWindow::StudioWindow(bool demo,QWidget *parent):QMainWindow(parent),demoMo
     timer.setInterval(200);connect(&timer,&QTimer::timeout,this,&StudioWindow::pollTrial);timer.start();
     qApp->installEventFilter(this);
     refreshInventory();
+    QTimer::singleShot(0,this,[this]{syncThemeWallpaper();});
     updatePreview();
     QTimer::singleShot(0,this,&StudioWindow::recoverPending);
 }
 QWidget *StudioWindow::appearancePage() {
-    auto root=new QWidget;auto v=new QVBoxLayout(root);v->setContentsMargins(0,0,0,0);v->setSpacing(12);
+    auto scroll=new QScrollArea;scroll->setWidgetResizable(true);scroll->setFrameShape(QFrame::NoFrame);auto root=new QWidget;scroll->setWidget(root);auto v=new QVBoxLayout(root);v->setContentsMargins(0,0,8,0);v->setSpacing(12);
     v->addWidget(label("Your desktop, reimagined.","hero"));
-    v->addWidget(label("Choose a complete color palette, then adjust your Plasma panel layout.","subtitle"));
+    v->addWidget(label("Choose your desktop layout and menus, then its colors and wallpaper.","subtitle"));
+    lookSelect=new QComboBox;lookSelect->addItem("Keep current layout · customize colors","");lookSelect->addItem("Default Plasma · native KDE desktop","plasma");lookSelect->addItem("Kamakiri style · rounded menus and left rail","caelestia");lookSelect->addItem("Fluent 11 · Windows 11 layout","fluent11");lookSelect->addItem("Fluent 10 · Windows 10 layout","fluent10");
+    QSettings savedLook;lookSelect->setCurrentIndex(qMax(0,lookSelect->findData(savedLook.value("desktop/look",""))));
+    v->addWidget(label("Desktop look","section"));v->addWidget(lookSelect);
     colorEnabled=new QCheckBox("Include KDE color changes in this trial");colorEnabled->setChecked(true);v->addWidget(colorEnabled);
     themeSelect=new QComboBox;
-    themeSelect->addItem("Caelestia inspired · Lavender","caelestia");
-    themeSelect->addItem("Ryoku inspired · Graphite and rose","ryoku");
+    themeSelect->addItem("Lavender","caelestia");
+    themeSelect->addItem("Graphite and rose","ryoku");
+    themeSelect->addItem("Windows · default blue","windows");
     themeSelect->addItem("Breeze · KDE classic","breeze");
     themeSelect->addItem("From your wallpaper · choose an image first","wallpaper");
     for (const auto &value:omarchyPalettes()) {
         auto p=value.toObject(); themeSelect->addItem("Omarchy · "+p["name"].toString()+" · "+p["mode"].toString(),p["id"].toString());
     }
-    v->addWidget(label("Color theme","section")); v->addWidget(themeSelect);
+    v->addWidget(label("Theme and wallpaper","section")); v->addWidget(themeSelect);
+    themeWallpaperEnabled=new QCheckBox("Use the associated Omarchy wallpaper");themeWallpaperEnabled->setChecked(true);v->addWidget(themeWallpaperEnabled);connect(themeWallpaperEnabled,&QCheckBox::toggled,this,[this]{syncThemeWallpaper();});
     connect(themeSelect,&QComboBox::currentIndexChanged,this,[this]{choosePreset(themeSelect->currentData().toString());});
     preview=new DesktopPreview;v->addWidget(preview,1);
     auto options=card();auto form=new QFormLayout(options);form->setContentsMargins(16,12,16,12);form->setVerticalSpacing(10);
@@ -147,9 +155,11 @@ QWidget *StudioWindow::appearancePage() {
     popupMode=new QComboBox;popupMode->addItem("Follow desktop","desktop");popupMode->addItem("Light","light");popupMode->addItem("Dark","dark");
     QSettings popupSettings;popupStyle->setCurrentIndex(qMax(0,popupStyle->findData(popupSettings.value("popup/style","rounded"))));popupMode->setCurrentIndex(qMax(0,popupMode->findData(popupSettings.value("popup/mode","desktop"))));
     connect(popupStyle,&QComboBox::currentIndexChanged,this,[this]{colorEnabled->setChecked(false);});connect(popupMode,&QComboBox::currentIndexChanged,this,[this]{colorEnabled->setChecked(false);});
-    auto popupRow=new QHBoxLayout;popupRow->addWidget(popupStyle);popupRow->addWidget(popupMode);form->addRow("Popup look",popupRow);
+    connect(lookSelect,&QComboBox::currentIndexChanged,this,[this]{chooseLook();});
+    connect(popupMode,&QComboBox::currentIndexChanged,this,[this]{if(!lookSelect->currentData().toString().isEmpty()){colorEnabled->setChecked(true);updatePreview();}});
+    auto popupRow=new QHBoxLayout;popupRow->addWidget(popupStyle);popupRow->addWidget(popupMode);form->addRow("Menu style and mode",popupRow);
     auto previews=new QHBoxLayout;
-    for(const auto &entry:QList<QStringList>{{"Preview launcher","launcher"},{"Preview dashboard","dashboard"}}){auto button=new QPushButton(entry[0]);previews->addWidget(button);connect(button,&QPushButton::clicked,this,[this,kind=entry[1]]{auto popup=new StudioPopup(kind=="launcher"?StudioPopup::Launcher:StudioPopup::Dashboard,demoMode,this,popupStyle->currentData().toString(),popupMode->currentData().toString());popup->setAttribute(Qt::WA_DeleteOnClose);popup->show();});}
+    for(const auto &entry:QList<QStringList>{{"Preview launcher","launcher"},{"Preview dashboard","dashboard"}}){auto button=new QPushButton(entry[0]);previews->addWidget(button);connect(button,&QPushButton::clicked,this,[this,kind=entry[1]]{if(kind=="launcher"&&lookSelect->currentData()=="plasma"){QMessageBox::information(this,"Default Plasma","This look uses KDE’s native Application Launcher, Breeze styling and a bottom panel. The custom Start preview is available for Kamakiri and Fluent looks.");return;}if(kind=="launcher"&&!lookSelect->currentData().toString().isEmpty()){auto q=new QQuickWidget; q->setAttribute(Qt::WA_DeleteOnClose);q->setResizeMode(QQuickWidget::SizeRootObjectToView);q->setSource(QUrl("qrc:/start/StartMenu.qml"));if(auto root=q->rootObject()){root->setProperty("look",lookSelect->currentData());root->setProperty("appearance",popupMode->currentData());root->setProperty("preview",true);}q->resize(lookSelect->currentData()=="fluent10"?760:640,650);q->setWindowTitle("Start menu preview");q->show();}else {auto popup=new StudioPopup(kind=="launcher"?StudioPopup::Launcher:StudioPopup::Dashboard,demoMode,this,popupStyle->currentData().toString(),popupMode->currentData().toString());popup->setAttribute(Qt::WA_DeleteOnClose);popup->show();}});}
     form->addRow("Try popup look",previews);
     connect(presetLayout,&QComboBox::currentIndexChanged,this,[this](int i){if(i==0)return;panelEnabled->setChecked(true);edgeSelect->setCurrentText(i==1?"left":"bottom");height->setValue(i==1?40:48);floating->setChecked(true);panelActions->setChecked(true);colorEnabled->setChecked(false);updatePreview();});
     connect(colorEnabled,&QCheckBox::toggled,this,&StudioWindow::updatePreview);
@@ -159,7 +169,8 @@ QWidget *StudioWindow::appearancePage() {
     bottom->addWidget(label("Widgets, shortcuts, and authentication stay yours.","subtitle"),1);
     apply=new QPushButton(demoMode?"Try confirmation flow":"Apply & try");apply->setObjectName("primary");connect(apply,&QPushButton::clicked,this,&StudioWindow::beginTrial);bottom->addWidget(apply);v->addLayout(bottom);
     choosePreset("omarchy-osaka-jade");
-    return root;
+    if(!lookSelect->currentData().toString().isEmpty())chooseLook();
+    return scroll;
 }
 QWidget *StudioWindow::sessionsPage() {
     auto w=new QWidget;auto v=new QVBoxLayout(w);v->setContentsMargins(0,0,0,0);v->setSpacing(15);
@@ -194,7 +205,7 @@ QWidget *StudioWindow::recoveryPage() {
             wallpaperPath=r["wallpaperPath"].toString();selectedWallpaper=wallpaperPath.isEmpty()?QImage():loadWallpaper(wallpaperPath);derivedPalette=wallpaperPath.isEmpty()?QJsonObject():wallpaperPalette(wallpaperPath);wallpaperEnabled->setEnabled(!wallpaperPath.isEmpty());wallpaperEnabled->setChecked(r["changeWallpaper"].toBool());
             if(!wallpaperPath.isEmpty())wallpaperPreview->setPixmap(QPixmap::fromImage(loadWallpaper(wallpaperPath)).scaled(700,210,Qt::KeepAspectRatio,Qt::SmoothTransformation));
             for(auto choice:widgetChoices)choice->setChecked(choice->isEnabled()&&r["widgets"].toArray().contains(choice->property("plugin").toString()));
-            choosePreset(r["preset"].toString());panelActions->setChecked(r["panelPopupActions"].toBool());popupStyle->setCurrentIndex(qMax(0,popupStyle->findData(r["popupStyle"].toString("rounded"))));popupMode->setCurrentIndex(qMax(0,popupMode->findData(r["popupMode"].toString("desktop"))));colorEnabled->setChecked(r["changeColors"].toBool(true));accent=QColor(r["accent"].toString());light->setChecked(r["light"].toBool());
+            lookSelect->setCurrentIndex(qMax(0,lookSelect->findData(r["desktopLook"].toString())));choosePreset(r["preset"].toString());panelActions->setChecked(r["panelPopupActions"].toBool());popupStyle->setCurrentIndex(qMax(0,popupStyle->findData(r["popupStyle"].toString("rounded"))));popupMode->setCurrentIndex(qMax(0,popupMode->findData(r["popupMode"].toString("desktop"))));colorEnabled->setChecked(r["changeColors"].toBool(true));accent=QColor(r["accent"].toString());light->setChecked(r["light"].toBool());
             auto p=r["panel"].toObject();edgeSelect->setCurrentText(p["location"].toString("bottom"));height->setValue(p["height"].toInt(44));floating->setChecked(p["floating"].toBool());
             // Panel IDs are machine-local. Preserve the currently selected local panel.
             panelEnabled->setChecked(r["changePanel"].toBool()&&panelSelect->count()>0);updatePreview();pages->setCurrentIndex(0);
@@ -230,7 +241,7 @@ void StudioWindow::choosePreset(const QString &id) {
     preset=id;
     if(colorEnabled)colorEnabled->setChecked(true);
     themeSelect->setCurrentIndex(themeSelect->findData(id));
-    auto palette=omarchyPalette(id);
+    auto palette=desktopPalette(id,"desktop");
     if(id=="wallpaper")palette=derivedPalette;
     QStringList ids{"caelestia","ryoku","breeze"};
     for(int i=0;i<presetButtons.size();i++)presetButtons[i]->setChecked(ids[i]==id);
@@ -238,11 +249,13 @@ void StudioWindow::choosePreset(const QString &id) {
     if (!palette.isEmpty()) accent=QColor(palette["accent"].toString());
     light->setEnabled(palette.isEmpty());
     if (!palette.isEmpty()) light->setChecked(palette["mode"]=="light");
+    syncThemeWallpaper();
     updatePreview();
 }
 void StudioWindow::updatePreview() {
     if(!preview)return;
-    preview->customPalette=preset=="wallpaper"?derivedPalette:QJsonObject();
+    preview->look=lookSelect->currentData().toString();
+    preview->customPalette=preset=="wallpaper"?derivedPalette:desktopPalette(preset,preview->look.isEmpty()?"desktop":popupMode->currentData().toString());
     preview->wallpaper=(!wallpaperPath.isEmpty()&&wallpaperEnabled&&wallpaperEnabled->isChecked())?selectedWallpaper:QImage();
     preview->preset=preset;preview->accent=accent;preview->light=light->isChecked();preview->edge=edgeSelect->currentText();preview->floating=floating->isChecked();preview->update();
     if(!colorEnabled->isChecked()) {
@@ -259,7 +272,7 @@ QJsonObject StudioWindow::desired() const {
     auto p=panelSelect->currentData().toJsonObject();
     p["location"]=edgeSelect->currentText();p["height"]=height->value();p["floating"]=floating->isChecked();
     QJsonArray widgets;for(auto choice:widgetChoices)if(choice->isEnabled()&&choice->isChecked())widgets.append(choice->property("plugin").toString());
-    return {{"preset",preset},{"accent",accent.name()},{"light",light->isChecked()},{"changePanel",panelEnabled->isChecked()&&panelSelect->count()>0},{"panel",p},{"wallpaperPath",wallpaperPath},{"changeWallpaper",wallpaperEnabled->isChecked()&&!wallpaperPath.isEmpty()},{"desktopId",desktopSelect->currentData().toInt()},{"widgets",widgets},{"changeColors",colorEnabled->isChecked()},{"panelPopupActions",panelActions->isChecked()},{"changePopupLook",true},{"popupStyle",popupStyle->currentData().toString()},{"popupMode",popupMode->currentData().toString()}};
+    return {{"desktopLook",lookSelect->currentData().toString()},{"preset",preset},{"accent",accent.name()},{"light",light->isChecked()},{"changePanel",panelEnabled->isChecked()&&panelSelect->count()>0},{"panel",p},{"wallpaperPath",wallpaperPath},{"changeWallpaper",wallpaperEnabled->isChecked()&&!wallpaperPath.isEmpty()},{"desktopId",desktopSelect->currentData().toInt()},{"widgets",widgets},{"changeColors",colorEnabled->isChecked()},{"panelPopupActions",panelActions->isChecked()},{"changePopupLook",true},{"popupStyle",popupStyle->currentData().toString()},{"popupMode",popupMode->currentData().toString()}};
 }
 void StudioWindow::beginTrial() {
     if(busy)return;
@@ -415,4 +428,23 @@ void StudioWindow::runUiCheck(const QString &path) {
         if(!busy&&elapsed->elapsed()>1000){check->stop();delete elapsed;QCoreApplication::exit(0);}
         else if(elapsed->elapsed()>10000){check->stop();delete elapsed;QCoreApplication::exit(2);}
     });check->start();
+}
+
+void StudioWindow::chooseLook() {
+    auto look=lookSelect->currentData().toString();if(look.isEmpty())return;
+    // Prefer an existing panel at the requested edge instead of creating stacked taskbars.
+    QString targetEdge=look=="caelestia"?"left":"bottom";
+    for(int i=0;i<panelSelect->count();i++)if(panelSelect->itemData(i).toJsonObject()["location"]==targetEdge){panelSelect->setCurrentIndex(i);break;}
+    if(look=="plasma"){choosePreset("breeze");light->setChecked(true);popupMode->setCurrentIndex(popupMode->findData("desktop"));}
+    panelEnabled->setChecked(true);edgeSelect->setCurrentText(look=="caelestia"?"left":"bottom");height->setValue(look=="caelestia"?48:(look=="fluent11"||look=="plasma")?48:40);floating->setChecked(look=="caelestia"||look=="plasma");
+    panelActions->setChecked(false);popupStyle->setCurrentIndex(popupStyle->findData(look=="caelestia"?"rounded":"fluent"));colorEnabled->setChecked(true);updatePreview();
+}
+void StudioWindow::syncThemeWallpaper() {
+    if(!wallpaperPreview||!themeWallpaperEnabled->isChecked())return;
+    auto path=associatedWallpaper(preset);if(path.isEmpty())return;
+    try {selectedWallpaper=loadWallpaper(path);wallpaperPath=path;wallpaperEnabled->setEnabled(true);wallpaperEnabled->setChecked(true);wallpaperPreview->setPixmap(QPixmap::fromImage(selectedWallpaper).scaled(700,180,Qt::KeepAspectRatio,Qt::SmoothTransformation));updatePreview();}catch(const std::exception &e){notice->setText(QString::fromUtf8(e.what()));}
+}
+void StudioWindow::setDemoLook(const QString &look) {
+    if(!demoMode||!desktopLooks().contains(look))throw std::runtime_error("Invalid preview desktop look.");
+    lookSelect->setCurrentIndex(lookSelect->findData(look));
 }

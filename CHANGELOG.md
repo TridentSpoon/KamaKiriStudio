@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 development
+
+- Separate desktop look from Omarchy theme and associated wallpaper selection.
+- Add native Plasma Start menus for Kamakiri, Fluent 11 and Fluent 10.
+- Add Default Plasma and rename the rounded layout to Kamakiri style.
+- Add original Plasma style assets and experimental launcher/style recovery.
+- Prefer an existing panel at the requested edge.
+- Clearly identify development manifests without reporting a stale release checksum failure.
+- Known switching/recovery issues remain; see KNOWN-ISSUES.md.
+
 ## 0.4.1
 
 - Studio follows KDE’s system colors, widget style and font; popup look choices remain independent.
