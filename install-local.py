@@ -59,7 +59,7 @@ def main():
         target.parent.mkdir(parents=True,exist_ok=True)
         if target.parent.is_symlink() or target.parent.stat().st_uid!=os.getuid():raise SystemExit(f'Destination directory must belong to you and not be a symlink: {target.parent}')
     for target,(data,mode) in entries.items():atomically_write(target,data,mode)
-    manifest={'app':'KamaKiriStudio','version':'0.4.0','files':{str(target):sha(data) for target,(data,_) in entries.items()}}
+    manifest={'app':'KamaKiriStudio','version':'0.4.1','files':{str(target):sha(data) for target,(data,_) in entries.items()}}
     atomically_write(receipt,(json.dumps(manifest,indent=2)+'\n').encode(),0o600)
     updater=shutil.which('update-desktop-database')
     if updater:subprocess.run([updater,str(launcher.parent)],check=False)

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(KamaKiriStudio VERSION 0.4.0 LANGUAGES C CXX)
+project(KamaKiriStudio VERSION 0.4.1 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_AUTOMOC ON)
 find_package(Qt6 REQUIRED COMPONENTS Widgets DBus Network Test)

@@ -30,9 +30,10 @@
 
 using namespace Studio;
 static QLabel *label(const QString &text,const QString &name=QString()) {
-    auto l=new QLabel(text); l->setWordWrap(true); if(!name.isEmpty()) l->setObjectName(name); return l;
+    auto l=new QLabel(text); l->setWordWrap(true);
+    auto font=l->font();if(name=="hero"){font.setPointSizeF(font.pointSizeF()*2);font.setBold(true);}else if(name=="section"){font.setPointSizeF(font.pointSizeF()*1.25);font.setBold(true);}l->setFont(font); if(!name.isEmpty()) l->setObjectName(name); return l;
 }
-static QFrame *card() {auto f=new QFrame;f->setObjectName("card");return f;}
+static QFrame *card() {auto f=new QFrame;f->setObjectName("card");f->setFrameShape(QFrame::StyledPanel);return f;}
 
 void DesktopPreview::paintEvent(QPaintEvent *) {
     QPainter p(this); p.setRenderHint(QPainter::Antialiasing);
@@ -81,24 +82,6 @@ void DesktopPreview::paintEvent(QPaintEvent *) {
 StudioWindow::StudioWindow(bool demo,QWidget *parent):QMainWindow(parent),demoMode(demo) {
     setWindowTitle(demo?"KamaKiriStudio — Preview mode":"KamaKiriStudio");
     resize(1080,920);setMinimumSize(860,810);
-    setStyleSheet(R"(
-      QMainWindow,QDialog {background:#15151e;color:#efedf7;}
-      QWidget {font-family:Sans Serif;font-size:13px;color:#efedf7;}
-      QLabel#hero {font-size:29px;font-weight:700;} QLabel#subtitle {color:#a8a3b8;}
-      QLabel#section {font-size:17px;font-weight:600;}
-      QFrame#card {background:#20202c;border:1px solid #353344;border-radius:12px;}
-      QPushButton {background:#2a2839;border:1px solid #474156;border-radius:8px;padding:9px 14px;}
-      QPushButton:hover {background:#373247;} QPushButton:checked {border:2px solid #c4a7ff;background:#302740;}
-      QPushButton:disabled {color:#888391;border-color:#35313e;}
-      QPushButton#primary {background:#c4a7ff;color:#21192e;border:none;font-weight:700;}
-      QPushButton#primary:disabled {background:#655875;color:#c0b7cb;}
-      QComboBox,QSpinBox,QListWidget {background:#242330;border:1px solid #474156;border-radius:7px;padding:6px;}
-      QComboBox QAbstractItemView {background:#242330;selection-background-color:#51416a;}
-      QListWidget::item {padding:13px;} QListWidget::item:selected {background:#423454;border-radius:7px;}
-      QCheckBox {spacing:8px;} QTabBar::tab {padding:12px;}
-      QScrollArea {border:none;background:transparent;} QScrollArea>QWidget>QWidget {background:transparent;}
-    )");
-    referenceManagerStyle=styleSheet();
     auto central=new QWidget;setCentralWidget(central);
     auto layout=new QHBoxLayout(central);layout->setContentsMargins(22,22,22,22);layout->setSpacing(25);
     auto side=new QVBoxLayout;side->setSpacing(10);
@@ -163,8 +146,7 @@ QWidget *StudioWindow::appearancePage() {
     popupStyle=new QComboBox;popupStyle->addItem("Reference rounded","rounded");popupStyle->addItem("Fluent inspired","fluent");
     popupMode=new QComboBox;popupMode->addItem("Follow desktop","desktop");popupMode->addItem("Light","light");popupMode->addItem("Dark","dark");
     QSettings popupSettings;popupStyle->setCurrentIndex(qMax(0,popupStyle->findData(popupSettings.value("popup/style","rounded"))));popupMode->setCurrentIndex(qMax(0,popupMode->findData(popupSettings.value("popup/mode","desktop"))));
-    connect(popupStyle,&QComboBox::currentIndexChanged,this,[this]{colorEnabled->setChecked(false);refreshManagerLook();});connect(popupMode,&QComboBox::currentIndexChanged,this,[this]{colorEnabled->setChecked(false);refreshManagerLook();});
-    refreshManagerLook();
+    connect(popupStyle,&QComboBox::currentIndexChanged,this,[this]{colorEnabled->setChecked(false);});connect(popupMode,&QComboBox::currentIndexChanged,this,[this]{colorEnabled->setChecked(false);});
     auto popupRow=new QHBoxLayout;popupRow->addWidget(popupStyle);popupRow->addWidget(popupMode);form->addRow("Popup look",popupRow);
     auto previews=new QHBoxLayout;
     for(const auto &entry:QList<QStringList>{{"Preview launcher","launcher"},{"Preview dashboard","dashboard"}}){auto button=new QPushButton(entry[0]);previews->addWidget(button);connect(button,&QPushButton::clicked,this,[this,kind=entry[1]]{auto popup=new StudioPopup(kind=="launcher"?StudioPopup::Launcher:StudioPopup::Dashboard,demoMode,this,popupStyle->currentData().toString(),popupMode->currentData().toString());popup->setAttribute(Qt::WA_DeleteOnClose);popup->show();});}
@@ -420,7 +402,7 @@ void StudioWindow::runUiCheck(const QString &path) {
     QTimer::singleShot(100,this,[this,path]{
         int previousStyle=popupStyle->currentIndex();bool previousColors=colorEnabled->isChecked();
         popupStyle->setCurrentIndex(0);popupStyle->setCurrentIndex(1);
-        if(colorEnabled->isChecked()){QCoreApplication::exit(2);return;}
+        if(!styleSheet().isEmpty()||palette()!=QApplication::palette()||colorEnabled->isChecked()){QCoreApplication::exit(2);return;}
         popupStyle->setCurrentIndex(previousStyle);colorEnabled->setChecked(previousColors);
         capture(path);beginTrial();
     });
@@ -433,19 +415,4 @@ void StudioWindow::runUiCheck(const QString &path) {
         if(!busy&&elapsed->elapsed()>1000){check->stop();delete elapsed;QCoreApplication::exit(0);}
         else if(elapsed->elapsed()>10000){check->stop();delete elapsed;QCoreApplication::exit(2);}
     });check->start();
-}
-
-void StudioWindow::refreshManagerLook() {
-    if(popupStyle->currentData()!="fluent"){setStyleSheet(referenceManagerStyle);return;}
-    bool lightMode=popupMode->currentData()=="light"||(popupMode->currentData()=="desktop"&&palette().color(QPalette::Window).lightnessF()>=.5);
-    QString css=referenceManagerStyle;
-    const QList<QPair<QString,QString>> replacements{
-        {"#15151e",lightMode?"#f3f3f3":"#202020"},{"#efedf7",lightMode?"#1b1b1b":"#f5f5f5"},
-        {"#20202c",lightMode?"#ffffff":"#2b2b2b"},{"#353344",lightMode?"#dedede":"#454545"},
-        {"#474156",lightMode?"#d4d4d4":"#505050"},{"#a8a3b8",lightMode?"#606060":"#b4b4b4"},
-        {"#2a2839",lightMode?"#e9e9e9":"#333333"},{"#242330",lightMode?"#ffffff":"#292929"},
-        {"#373247",lightMode?"#dddddd":"#444444"},{"#302740",lightMode?"#e4e4e4":"#3c3c3c"},
-        {"#423454",lightMode?"#dfdfdf":"#444444"},{"#51416a",lightMode?"#dddddd":"#4a4a4a"}};
-    for(const auto &entry:replacements)css.replace(entry.first,entry.second);
-    css.replace("border-radius:12px","border-radius:8px");setStyleSheet(css);
 }

@@ -24,7 +24,7 @@ static QString transactionPath(const QString &id) {
 }
 int main(int argc,char **argv) {
     QApplication app(argc,argv);
-    app.setApplicationName("KamaKiriStudio");app.setOrganizationName("KamaKiriStudio");app.setApplicationVersion("0.4.0");
+    app.setApplicationName("KamaKiriStudio");app.setOrganizationName("KamaKiriStudio");app.setApplicationVersion("0.4.1");
     app.setQuitOnLastWindowClosed(false);
     QCommandLineParser p;p.setApplicationDescription("KDE-first appearance trials and installed-session switching.");p.addHelpOption();p.addVersionOption();
     p.addOptions({{"popup-style","Popup style: rounded or fluent.","style"},{"popup-mode","Popup mode: desktop, light or dark.","mode"},{"launcher","Open the rounded application popup."},{"dashboard","Open the rounded dashboard popup."},{"check-updates","Report the official GitHub release check without opening a window."},{"capture-page","Select a page for capture.","name"},{"demo-wallpaper","Set an image for an isolated preview check.","path"},{"demo","Preview without changing desktop settings."},{"worker","Independent trial watchdog (internal).","id"},{"recover","Restore an unfinished trial.","id"},{"recover-all","Restore abandoned trials at login without opening a window."},{"inspect","Print read-only desktop integration details."},{"ui-check","Run an isolated GUI confirmation check and capture an image.","path"},{"capture","Save a screenshot of the app, then exit.","path"},{"probe-input","Test global input reporting without changing settings."}});

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- Studio follows KDE’s system colors, widget style and font; popup look choices remain independent.
+
 ## 0.4.0
 
 - Rounded standalone application launcher and dashboard popups.

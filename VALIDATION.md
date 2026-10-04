@@ -36,3 +36,5 @@ Unit checks validate local image formats and dimensions, deterministic wallpaper
 ## Version 0.4.0 look and layout
 
 Both unit suites pass, including Fluent Light/Dark foreground/background readability and transparent popup corners. The five simulated watchdog cases pass. A live reference-rail trial verified both owned panel buttons, kept all parsed kdeglobals values unchanged during the trial, chose No, and restored the complete panel geometry and widget inventory exactly. Light/Dark popup renders were inspected and calendar background/arrow contrast corrected. The compositor blur request is supported by KDE’s WindowSystem API; visible blur and popup placement depend on KWin and were not measured by the offscreen captures.
+
+0.4.1: build and both CTest suites pass. Isolated GUI trial check confirms the manager has no stylesheet override and inherits the application palette after changing popup styles; No restores the trial.

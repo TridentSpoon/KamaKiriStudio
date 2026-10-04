@@ -39,8 +39,6 @@ protected:
     bool eventFilter(QObject *watched,QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 private:
-    QString referenceManagerStyle;
-    void refreshManagerLook();
     bool demoMode, busy=false, inputSeen=false, closing=false;
     QString preset="caelestia", transaction, decision, wallpaperPath;
     QImage selectedWallpaper;

@@ -91,3 +91,5 @@ Original application code is MIT. Omarchy palette attribution and permission are
 | ![Fluent Light](docs/fluent-light.png) | ![Fluent Dark](docs/fluent-dark.png) |
 
 [Reference rounded launcher](docs/rounded-launcher.png). Screenshots show the app’s preview mode; launching applications is disabled in that mode.
+
+The Studio manager follows the active KDE system colors, font and widget style. Rounded/Fluent popup choices affect the launcher and dashboard only.
