@@ -41,7 +41,8 @@ static QColor configuredColor(const KConfigGroup &group,const char *key,const QC
 }
 static QLabel *plainLabel(const QString &text,const QString &name={}) {auto label=new QLabel(text);label->setTextFormat(Qt::PlainText);label->setWordWrap(true);label->setObjectName(name);return label;}
 StudioPopup::StudioPopup(Mode m,bool demo,QWidget *parent,const QString &style,const QString &appearance):QWidget(parent,Qt::Tool|Qt::FramelessWindowHint),demoMode(demo),mode(m) {
-    if(QIcon::themeName().isEmpty())QIcon::setThemeName("breeze");QIcon::setFallbackThemeName("breeze");
+    if(QIcon::themeName().isEmpty())QIcon::setThemeName("breeze");
+    QIcon::setFallbackThemeName("breeze");
     setAttribute(Qt::WA_TranslucentBackground);setWindowTitle(m==Launcher?"KamaKiri launcher":"KamaKiri dashboard");
     KConfig globals(Studio::configFile(),KConfig::SimpleConfig);
     background=configuredColor(globals.group("Colors:Window"),"BackgroundNormal",palette().color(QPalette::Window));

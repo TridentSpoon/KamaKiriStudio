@@ -1,3 +1,5 @@
+#include <QQuickWidget>
+#include <QQuickItem>
 // SPDX-License-Identifier: MIT
 #include "window.h"
 #include "popup.h"
@@ -24,10 +26,10 @@ static QString transactionPath(const QString &id) {
 }
 int main(int argc,char **argv) {
     QApplication app(argc,argv);
-    app.setApplicationName("KamaKiriStudio");app.setOrganizationName("KamaKiriStudio");app.setApplicationVersion("0.4.1");
+    app.setApplicationName("KamaKiriStudio");app.setOrganizationName("KamaKiriStudio");app.setApplicationVersion("0.5.0");
     app.setQuitOnLastWindowClosed(false);
     QCommandLineParser p;p.setApplicationDescription("KDE-first appearance trials and installed-session switching.");p.addHelpOption();p.addVersionOption();
-    p.addOptions({{"popup-style","Popup style: rounded or fluent.","style"},{"popup-mode","Popup mode: desktop, light or dark.","mode"},{"launcher","Open the rounded application popup."},{"dashboard","Open the rounded dashboard popup."},{"check-updates","Report the official GitHub release check without opening a window."},{"capture-page","Select a page for capture.","name"},{"demo-wallpaper","Set an image for an isolated preview check.","path"},{"demo","Preview without changing desktop settings."},{"worker","Independent trial watchdog (internal).","id"},{"recover","Restore an unfinished trial.","id"},{"recover-all","Restore abandoned trials at login without opening a window."},{"inspect","Print read-only desktop integration details."},{"ui-check","Run an isolated GUI confirmation check and capture an image.","path"},{"capture","Save a screenshot of the app, then exit.","path"},{"probe-input","Test global input reporting without changing settings."}});
+    p.addOptions({{"start-check","Validate native Start menu catalog and preview safety."},{"demo-look","Choose a look for an isolated manager preview.","look"},{"start-preview","Preview a native Start menu: caelestia, fluent11, fluent10.","look"},{"popup-style","Popup style: rounded or fluent.","style"},{"popup-mode","Popup mode: desktop, light or dark.","mode"},{"launcher","Open the rounded application popup."},{"dashboard","Open the rounded dashboard popup."},{"check-updates","Report the official GitHub release check without opening a window."},{"capture-page","Select a page for capture.","name"},{"demo-wallpaper","Set an image for an isolated preview check.","path"},{"demo","Preview without changing desktop settings."},{"worker","Independent trial watchdog (internal).","id"},{"recover","Restore an unfinished trial.","id"},{"recover-all","Restore abandoned trials at login without opening a window."},{"inspect","Print read-only desktop integration details."},{"ui-check","Run an isolated GUI confirmation check and capture an image.","path"},{"capture","Save a screenshot of the app, then exit.","path"},{"probe-input","Test global input reporting without changing settings."}});
     p.process(app);
     try {
         if(getuid()==0)throw std::runtime_error("Run KamaKiriStudio as your desktop user, not root.");
@@ -63,6 +65,17 @@ int main(int argc,char **argv) {
             if(p.isSet("recover")){Studio::recover(dir,demo);return 0;}
             Studio::Worker worker(dir,demo);QTimer::singleShot(0,&worker,&Studio::Worker::start);return app.exec();
         }
+        if(p.isSet("start-preview")) {
+            auto look=p.value("start-preview");if(look=="plasma")throw std::runtime_error("Default Plasma uses KDE’s native Application Launcher; use the manager layout preview.");if(!Studio::desktopLooks().contains(look))throw std::runtime_error("Unknown desktop look.");
+            QQuickWidget preview;preview.setResizeMode(QQuickWidget::SizeRootObjectToView);preview.setSource(QUrl("qrc:/start/StartMenu.qml"));
+            if(preview.status()==QQuickWidget::Error)throw std::runtime_error("The Start menu preview could not load.");
+            auto root=preview.rootObject();root->setProperty("look",look);root->setProperty("preview",true);root->setProperty("appearance",p.value("popup-mode").isEmpty()?"desktop":p.value("popup-mode"));
+            preview.resize(look=="fluent10"?760:640,650);preview.show();
+            QObject::connect(&app,&QApplication::lastWindowClosed,&app,&QCoreApplication::quit);
+            if(p.isSet("start-check")){QTimer::singleShot(1200,&preview,[&preview,&app]{auto root=preview.rootObject();if(!root||root->property("applicationCount").toInt()<=0||!root->property("preview").toBool()){app.exit(2);return;}root->setProperty("searchText","'; touch /tmp/kamakiri-search-injection; #");QTextStream(stdout)<<"Native Start catalog loaded; preview actions disabled; search stays data.\n";app.quit();});}
+            if(p.isSet("capture")){auto path=p.value("capture");QTimer::singleShot(1200,&preview,[&preview,&app,path]{preview.grab().save(path);app.quit();});}
+            return app.exec();
+        }
         if(p.isSet("launcher")||p.isSet("dashboard")) {
             if(p.isSet("popup-style")&&!QStringList{"rounded","fluent"}.contains(p.value("popup-style")))throw std::runtime_error("Unknown popup style.");
             if(p.isSet("popup-mode")&&!QStringList{"desktop","light","dark"}.contains(p.value("popup-mode")))throw std::runtime_error("Unknown popup mode.");
@@ -74,6 +87,7 @@ int main(int argc,char **argv) {
         QLockFile single(Studio::stateRoot()+"/manager.lock");single.setStaleLockTime(0);
         if(!single.tryLock(0)){QMessageBox::information(nullptr,"KamaKiriStudio","The manager is already open.");return 1;}
         StudioWindow window(p.isSet("demo"));
+        if(p.isSet("demo-look"))window.setDemoLook(p.value("demo-look"));
         if(p.isSet("demo-wallpaper"))window.setDemoWallpaper(p.value("demo-wallpaper"));
         if(p.isSet("capture-page"))window.showPreviewPage(p.value("capture-page"));
         if(p.isSet("check-updates")){window.reportUpdateCheck();return app.exec();}

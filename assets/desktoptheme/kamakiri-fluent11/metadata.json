@@ -1,0 +1,14 @@
+{
+  "KPlugin": {
+    "Id": "kamakiri-fluent11",
+    "Name": "KamaKiri fluent11",
+    "Version": "0.5.0",
+    "License": "MIT",
+    "Authors": [
+      {
+        "Name": "KamaKiriStudio contributors"
+      }
+    ]
+  },
+  "X-Plasma-API": "5.0"
+}

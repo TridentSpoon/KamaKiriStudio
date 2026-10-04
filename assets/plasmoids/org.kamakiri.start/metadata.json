@@ -1,0 +1,22 @@
+{
+  "KPlugin": {
+    "Id": "org.kamakiri.start",
+    "Name": "KamaKiri Start",
+    "Description": "Native Start menu for Kamakiri, Fluent 11 and Fluent 10 layouts",
+    "Icon": "view-app-grid",
+    "Version": "0.5.0",
+    "License": "MIT",
+    "Authors": [
+      {
+        "Name": "KamaKiriStudio contributors"
+      }
+    ]
+  },
+  "X-Plasma-API-Minimum-Version": "6.0",
+  "X-Plasma-API": "declarativeappletscript",
+  "X-Plasma-MainScript": "ui/main.qml",
+  "X-Plasma-Provides": [
+    "org.kde.plasma.launchermenu"
+  ],
+  "KPackageStructure": "Plasma/Applet"
+}
