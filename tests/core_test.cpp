@@ -9,9 +9,69 @@
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void panelSettingsComparisonIgnoresEmptyGroupsAndRetainsValues() {
+        QJsonObject root{{"path",QJsonArray{}},{"entries",QJsonObject{{"popupWidth","560"}}},{"children",QJsonArray{}}};
+        auto restored=root;restored["children"]=QJsonArray{QJsonObject{{"path",QJsonArray{"General"}},{"entries",QJsonObject{}},{"children",QJsonArray{}}}};
+        QCOMPARE(Studio::comparablePanelWidgetConfig(root),Studio::comparablePanelWidgetConfig(restored));
+        restored["entries"]=QJsonObject{{"popupWidth","400"}};
+        QVERIFY(Studio::comparablePanelWidgetConfig(root)!=Studio::comparablePanelWidgetConfig(restored));
+    }
+    void configurationDialogGeometryDoesNotBlockRecovery() {
+        QJsonObject original{{"path",QJsonArray{}},{"entries",QJsonObject{{"popupWidth","640"}}},{"children",QJsonArray{QJsonObject{{"path",QJsonArray{"General"}},{"entries",QJsonObject{{"look","fluent11"},{"favorites","dolphin.desktop"}}},{"children",QJsonArray{}}}}}};
+        auto restored=original;auto children=restored["children"].toArray();children.append(QJsonObject{{"path",QJsonArray{"ConfigDialog"}},{"entries",QJsonObject{{"DialogHeight","630"},{"DialogWidth","810"}}},{"children",QJsonArray{}}});restored["children"]=children;
+        QCOMPARE(Studio::comparablePanelWidgetConfig(original),Studio::comparablePanelWidgetConfig(restored));
+        auto general=children[0].toObject();general["entries"]=QJsonObject{{"look","fluent10"},{"favorites","dolphin.desktop"}};children[0]=general;restored["children"]=children;
+        QVERIFY(Studio::comparablePanelWidgetConfig(original)!=Studio::comparablePanelWidgetConfig(restored));
+    }
+    void mirroredIconCachePathDoesNotBlockRecovery() {
+        QJsonObject general{{"path",QJsonArray{"General"}},{"entries",QJsonObject{{"url","file:///launcher.desktop"}}},{"children",QJsonArray{}}};
+        QJsonObject original{{"path",QJsonArray{}},{"entries",QJsonObject{{"localPath","/cache/launcher.desktop"}}},{"children",QJsonArray{general}}};
+        auto restored=original;auto entries=general["entries"].toObject();entries["localPath"]="/cache/launcher.desktop";general["entries"]=entries;restored["children"]=QJsonArray{general};
+        QCOMPARE(Studio::comparablePanelWidgetConfig(original),Studio::comparablePanelWidgetConfig(restored));
+        entries["url"]="file:///different.desktop";general["entries"]=entries;restored["children"]=QJsonArray{general};QVERIFY(Studio::comparablePanelWidgetConfig(original)!=Studio::comparablePanelWidgetConfig(restored));
+    }
+    void monitorSelectionExcludesDisabledDisplays() {
+        QJsonObject a{{"id",1},{"screen",0},{"active",true},{"activity","a"},{"plugin","org.kde.image"}};
+        auto b=a;b["id"]=2;b["screen"]=1;auto c=a;c["id"]=3;c["screen"]=2;
+        auto result=Studio::wallpaperTargets(QJsonArray{a,b,c},1,"span",QJsonArray{2,3});
+        QCOMPARE(result,QJsonArray({b,c}));
+    }
+    void panelRecoveryAcceptsLegacySnapshotsButVerifiesScreenWhenPresent() {
+        QJsonObject old{{"id",4},{"location","bottom"},{"height",40},{"floating",true}};
+        auto current=old;current["screen"]=1;QVERIFY(Studio::panelMatchesState(current,old));
+        old["screen"]=0;QVERIFY(!Studio::panelMatchesState(current,old));
+    }
+    void legacySnapshotWidgetOrderUsesPositions() {
+        QJsonObject a{{"id",97},{"index",2}}, b{{"id",172},{"index",0}}, c{{"id",173},{"index",1}};
+        QCOMPARE(Studio::orderedPanelWidgets(QJsonArray{a,b,c}),QJsonArray({b,c,a}));
+        QCOMPARE(Studio::orderedPanelWidgets(QJsonArray{c,a,b}),QJsonArray({b,c,a}));
+    }
+    void wallpaperCatalogContainsEveryThemeImage() {
+        QStringList ids{"caelestia","ryoku","windows","breeze"};
+        for(const auto &entry:Studio::omarchyPalettes())ids.append(entry.toObject()["id"].toString());
+        for(const auto &id:ids){auto paths=Studio::themeWallpapers(id);QCOMPARE(paths.size(),id=="omarchy-retro-82"?8:id=="omarchy-tokyo-night"?7:5);QCOMPARE(Studio::associatedWallpaper(id),paths.first());for(const auto &path:paths)QVERIFY(!Studio::loadWallpaper(path).isNull());}
+        QVERIFY(Studio::themeWallpapers("missing-theme").isEmpty());
+        for(const auto &id:{"omarchy-rose-pine","omarchy-lumon"})for(const auto &path:Studio::themeWallpapers(id)){QVERIFY(!path.contains("omarchy-plants"));QVERIFY(!path.contains("opinions-equally"));}
+
+    }
+    void wallpapersTargetConnectedCurrentActivityOnly() {
+        QJsonObject one{{"id",1},{"screen",0},{"active",true},{"activity","current"},{"plugin","org.kde.image"}};
+        auto two=one;two["id"]=2;two["screen"]=1;auto inactive=one;inactive["id"]=3;inactive["active"]=false;
+        QJsonArray desktops{one,two,inactive};QCOMPARE(Studio::wallpaperTargets(desktops,1,"single").size(),1);QCOMPARE(Studio::wallpaperTargets(desktops,1,"all").size(),2);
+        QVERIFY_EXCEPTION_THROWN(Studio::wallpaperTargets(desktops,3,"span"),std::runtime_error);
+        two["plugin"]="unsupported";QVERIFY_EXCEPTION_THROWN(Studio::wallpaperTargets(QJsonArray{one,two},1,"all"),std::runtime_error);
+    }
+    void spanningUsesDisplayOffsetsAndBoundsMemory() {
+        QImage source(96,24,QImage::Format_RGB32);source.fill(Qt::red);for(int x=48;x<96;x++)for(int y=0;y<24;y++)source.setPixelColor(x,y,Qt::blue);
+        auto crops=Studio::spanWallpaper(source,{QRect(-48,0,48,24),QRect(0,0,48,24)});QCOMPARE(crops.size(),2);QCOMPARE(crops[0].pixelColor(20,12),QColor(Qt::red));QCOMPARE(crops[1].pixelColor(20,12),QColor(Qt::blue));
+        QVERIFY_EXCEPTION_THROWN(Studio::spanWallpaper(source,{QRect(0,0,32000,32000)}),std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(Studio::spanWallpaper(source,{QRect()}),std::runtime_error);
+        QImage portrait(1,100,QImage::Format_RGB32);portrait.fill(Qt::green);auto bounded=Studio::spanWallpaper(portrait,{QRect(0,0,1000,10)});QCOMPARE(bounded[0].size(),QSize(1000,10));
+    }
+
     void desktopLooksRequireKnownLayoutAndPanel() {
         QJsonObject request{{"preset","windows"},{"accent","#0078d4"},{"desktopLook","fluent11"},{"changePanel",true},{"panel",QJsonObject{{"id",1},{"height",48},{"location","bottom"},{"floating",false}}}};
-        Studio::validateRequest(request);request["desktopLook"]="'; bad()";QVERIFY_EXCEPTION_THROWN(Studio::validateRequest(request),std::runtime_error);
+        Studio::validateRequest(request);request["panelPopupActions"]=true;QVERIFY_EXCEPTION_THROWN(Studio::validateRequest(request),std::runtime_error);request["panelPopupActions"]=false;request["desktopLook"]="'; bad()";QVERIFY_EXCEPTION_THROWN(Studio::validateRequest(request),std::runtime_error);
         QVERIFY_EXCEPTION_THROWN(Studio::applyLookScript(1,"fluent11","bad","12345678-1234-1234-1234-123456789abc"),std::runtime_error);
         auto light=Studio::desktopPalette("omarchy-osaka-jade","light"),dark=Studio::desktopPalette("omarchy-osaka-jade","dark");
         QCOMPARE(light["accent"],dark["accent"]);QVERIFY(QColor(light["background"].toString()).lightnessF()>.8);QVERIFY(QColor(dark["background"].toString()).lightnessF()<.2);

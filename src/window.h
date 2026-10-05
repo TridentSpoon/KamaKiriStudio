@@ -15,6 +15,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 
+class WallpaperGallery;
+class QVBoxLayout;
 class DesktopPreview : public QWidget {
 public:
     QString look, preset = "caelestia", edge = "bottom";
@@ -44,21 +46,31 @@ private:
     QString preset="caelestia", transaction, decision, wallpaperPath;
     QImage selectedWallpaper;
     QJsonObject derivedPalette;
-    QComboBox *desktopSelect, *playerSelect;
+    QComboBox *desktopSelect;
+    QComboBox *wallpaperScope=nullptr, *wallpaperTheme=nullptr;
+    QComboBox *appearanceScope=nullptr, *appearanceDisplay=nullptr;
+    WallpaperGallery *wallpaperGallery=nullptr, *appearanceGallery=nullptr;
+    QVBoxLayout *monitorLayout=nullptr;
+    QList<QCheckBox*> monitorEnabled;
+    QList<QComboBox*> monitorEdges;
+    bool wallpaperOnly=false;
+    void refreshMonitorControls(const QJsonArray &desktops);
+    void selectWallpaper(const QString &path,bool matchColors);
+    void refreshWallpaperGallery();
     QCheckBox *wallpaperEnabled=nullptr, *wallpaperColors=nullptr;
-    QLabel *wallpaperPreview=nullptr, *clockLabel, *dateLabel, *systemLabel, *trackLabel;
+    QLabel *wallpaperPreview=nullptr;
     QPushButton *desktopApply;
     QList<QCheckBox*> widgetChoices;
-    QList<QPushButton*> mediaButtons;
-    QTimer dashboardTimer;
     QColor accent=QColor("#c4a7ff");
     qint64 heartbeat=0;
     qint64 workerPid=0;
     QJsonObject inventory;
     QList<QPushButton*> presetButtons;
     DesktopPreview *preview;
-    QPushButton *apply, *accentButton, *switchButton;
+    QPushButton *apply, *accentButton;
     QLabel *notice, *confirmationText, *trialExplanation;
+    QPushButton *restoreBlocked=nullptr;
+    QLabel *recoveryStatus=nullptr;
     QComboBox *lookSelect;
     QCheckBox *themeWallpaperEnabled;
     void chooseLook();
@@ -67,7 +79,6 @@ private:
     QCheckBox *colorEnabled=nullptr, *panelActions;
     QCheckBox *panelEnabled, *floating, *light;
     QSpinBox *height;
-    QListWidget *sessionList;
     QDialog *confirmation=nullptr;
     QTimer timer;
     QStackedWidget *pages;
@@ -75,16 +86,14 @@ private:
     QTimer updateTimer;
     QNetworkAccessManager *updateNetwork=nullptr;
     QNetworkReply *updateReply=nullptr;
+    QProcess *updateProcess=nullptr;
+    void updateNow();
     void checkOnlineUpdate();
     QWidget *aboutPage();
     void checkLocalUpdate();
     QWidget *appearancePage();
     QWidget *desktopPage();
-    QWidget *dashboardPage();
     void refreshDesktopTools();
-    void refreshDashboard();
-    void mediaAction(const QString &method);
-    QWidget *sessionsPage();
     QWidget *recoveryPage();
     void refreshInventory();
     void choosePreset(const QString &id);
@@ -96,6 +105,5 @@ private:
     void decide(const QString &value);
     void showConfirmation();
     void recoverPending();
-    void logoutToSelectedSession();
     void error(const QString &message);
 };

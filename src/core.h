@@ -14,8 +14,17 @@ namespace Studio {
 class InputMonitor;
 QJsonObject desktopPalette(const QString &preset,const QString &mode);
 QStringList desktopLooks();
+QJsonObject comparablePanelWidgetConfig(QJsonObject node,const QMap<QString,QString> &ids={});
+QJsonArray orderedPanelWidgets(const QJsonArray &widgets);
+QStringList themeWallpapers(const QString &preset);
+QJsonArray wallpaperTargets(const QJsonArray &desktops,int selected,const QString &scope,const QJsonArray &included=QJsonArray{});
+QList<QImage> spanWallpaper(const QImage &image,const QList<QRect> &screens);
 QString associatedWallpaper(const QString &preset);
-QJsonObject snapshotLook(int panelId);
+QJsonObject snapshotDesktopStyling();
+QJsonObject snapshotLook(int panelId,bool full=false);
+bool panelMatchesState(const QJsonObject &actual,const QJsonObject &expected);
+QJsonArray trialPanels(const QJsonObject &request);
+int primaryDesktopScreen(const QJsonArray &desktops);
 QString applyLookScript(int id,const QString &look,const QString &mode,const QString &owner);
 QString restoreLookScript(const QJsonObject &saved,const QString &owner);
 void applyLook(const QJsonObject &request,const QString &owner);

@@ -52,7 +52,7 @@ int main(int argc,char **argv) {
         if(p.isSet("probe-input")) {
             Studio::InputMonitor monitor;
             if(!monitor.prepare()){QTextStream(stderr)<<"Global input protocol is unavailable.\n";return 1;}
-            QObject::connect(&monitor,&Studio::InputMonitor::activity,&app,[&app]{QTextStream(stdout)<<"GLOBAL_INPUT_DETECTED\n";app.quit();});
+            QObject::connect(&monitor,&Studio::InputMonitor::activity,&app,[&app,&monitor]{monitor.stop();QTextStream(stdout)<<"GLOBAL_INPUT_DETECTED\n";QTimer::singleShot(500,&app,[&app]{QTextStream(stdout)<<"INPUT_MONITOR_STOPPED_EVENT_LOOP_RESPONSIVE\n";app.quit();});});
             if(!monitor.arm())return 1;
             QTextStream(stdout)<<"GLOBAL_INPUT_PROTOCOL_READY (ignores idle inhibitors)\n";
             QTimer::singleShot(12000,&app,&QCoreApplication::quit);return app.exec();

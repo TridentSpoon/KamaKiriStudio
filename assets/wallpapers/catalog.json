@@ -1,24 +1,189 @@
 {
-  "omarchy-catppuccin": "catppuccin.webp",
-  "omarchy-catppuccin-latte": "catppuccin-latte.webp",
-  "omarchy-ethereal": "ethereal.webp",
-  "omarchy-everforest": "everforest.webp",
-  "omarchy-flexoki-light": "flexoki-light.webp",
-  "omarchy-gruvbox": "gruvbox.jpg",
-  "omarchy-hackerman": "hackerman.jpg",
-  "omarchy-kanagawa": "kanagawa.jpg",
-  "omarchy-last-horizon": "last-horizon.webp",
-  "omarchy-lumon": "lumon.webp",
-  "omarchy-lupine": "lupine.webp",
-  "omarchy-matte-black": "matte-black.jpg",
-  "omarchy-miasma": "miasma.webp",
-  "omarchy-nord": "nord.jpg",
-  "omarchy-osaka-jade": "osaka-jade.webp",
-  "omarchy-retro-82": "retro-82.webp",
-  "omarchy-ristretto": "ristretto.webp",
-  "omarchy-rose-pine": "rose-pine.webp",
-  "omarchy-solitude": "solitude.webp",
-  "omarchy-tokyo-night": "tokyo-night.webp",
-  "omarchy-vantablack": "vantablack.webp",
-  "omarchy-white": "white.webp"
+  "omarchy-catppuccin": [
+    "catppuccin.webp",
+    "catppuccin__2-waves.webp",
+    "catppuccin__3-blue-eye.webp",
+    "omarchy-catppuccin__studio-4.png",
+    "omarchy-catppuccin__studio-5.png"
+  ],
+  "omarchy-catppuccin-latte": [
+    "catppuccin-latte.webp",
+    "omarchy-catppuccin-latte__studio-2.png",
+    "omarchy-catppuccin-latte__studio-3.png",
+    "omarchy-catppuccin-latte__studio-4.png",
+    "omarchy-catppuccin-latte__studio-5.png"
+  ],
+  "omarchy-ethereal": [
+    "ethereal.webp",
+    "ethereal__2-meadow.webp",
+    "omarchy-ethereal__studio-3.png",
+    "omarchy-ethereal__studio-4.png",
+    "omarchy-ethereal__studio-5.png"
+  ],
+  "omarchy-everforest": [
+    "everforest.webp",
+    "omarchy-everforest__studio-2.png",
+    "omarchy-everforest__studio-3.png",
+    "omarchy-everforest__studio-4.png",
+    "omarchy-everforest__studio-5.png"
+  ],
+  "omarchy-flexoki-light": [
+    "flexoki-light.webp",
+    "omarchy-flexoki-light__studio-2.png",
+    "omarchy-flexoki-light__studio-3.png",
+    "omarchy-flexoki-light__studio-4.png",
+    "omarchy-flexoki-light__studio-5.png"
+  ],
+  "omarchy-gruvbox": [
+    "gruvbox.jpg",
+    "gruvbox__2-flower-basket.webp",
+    "gruvbox__3-village-square.jpg",
+    "gruvbox__4-idyllic-procession.jpg",
+    "gruvbox__5-leaves.jpg"
+  ],
+  "omarchy-hackerman": [
+    "hackerman.jpg",
+    "hackerman__2-geometric.webp",
+    "omarchy-hackerman__studio-3.png",
+    "omarchy-hackerman__studio-4.png",
+    "omarchy-hackerman__studio-5.png"
+  ],
+  "omarchy-kanagawa": [
+    "kanagawa.jpg",
+    "omarchy-kanagawa__studio-2.png",
+    "omarchy-kanagawa__studio-3.png",
+    "omarchy-kanagawa__studio-4.png",
+    "omarchy-kanagawa__studio-5.png"
+  ],
+  "omarchy-last-horizon": [
+    "last-horizon.webp",
+    "last-horizon__2-blink.webp",
+    "last-horizon__3-bokeh.webp",
+    "last-horizon__4-new-horizons.jpg",
+    "omarchy-last-horizon__studio-5.png"
+  ],
+  "omarchy-lumon": [
+    "lumon.webp",
+    "omarchy-lumon__studio-2.png",
+    "omarchy-lumon__studio-3.png",
+    "omarchy-lumon__studio-4.png",
+    "omarchy-lumon__studio-5.png"
+  ],
+  "omarchy-lupine": [
+    "lupine.webp",
+    "lupine__02-cherry-blossom-white.webp",
+    "lupine__03-pastel-clouds.webp",
+    "lupine__04-elegant-blue-wave.webp",
+    "lupine__05-abstract-wave.webp"
+  ],
+  "omarchy-matte-black": [
+    "matte-black.jpg",
+    "matte-black__1-dark-waters.webp",
+    "matte-black__2-dot-hands.webp",
+    "omarchy-matte-black__studio-4.png",
+    "omarchy-matte-black__studio-5.png"
+  ],
+  "omarchy-miasma": [
+    "miasma.webp",
+    "miasma__02-crowned.webp",
+    "omarchy-miasma__studio-3.png",
+    "omarchy-miasma__studio-4.png",
+    "omarchy-miasma__studio-5.png"
+  ],
+  "omarchy-nord": [
+    "nord.jpg",
+    "nord__1-city-view.webp",
+    "nord__2-night-hawks.webp",
+    "omarchy-nord__studio-4.png",
+    "omarchy-nord__studio-5.png"
+  ],
+  "omarchy-osaka-jade": [
+    "osaka-jade.webp",
+    "osaka-jade__2-shaded-entrance.webp",
+    "osaka-jade__3-mountain-moon.webp",
+    "omarchy-osaka-jade__studio-4.png",
+    "omarchy-osaka-jade__studio-5.png"
+  ],
+  "omarchy-retro-82": [
+    "retro-82.webp",
+    "retro-82__2-dusk-guardian.webp",
+    "retro-82__3-glassy-lines.webp",
+    "retro-82__4-gateway.webp",
+    "retro-82__5-zen-boat.webp",
+    "retro-82__6-abstract-pyramids.webp",
+    "retro-82__7-the-journey.webp",
+    "retro-82__8-glitter-glass.webp"
+  ],
+  "omarchy-ristretto": [
+    "ristretto.webp",
+    "ristretto__1-color-curves.webp",
+    "ristretto__2-coffee-beans.jpg",
+    "ristretto__3-industrial-moon.webp",
+    "omarchy-ristretto__studio-5.png"
+  ],
+  "omarchy-rose-pine": [
+    "rose-pine.webp",
+    "rose-pine__2-dot-map.webp",
+    "omarchy-rose-pine__studio-3.png",
+    "omarchy-rose-pine__studio-4.png",
+    "omarchy-rose-pine__studio-5.png"
+  ],
+  "omarchy-solitude": [
+    "solitude.webp",
+    "solitude__2-wreakage.webp",
+    "solitude__3-climb.jpg",
+    "solitude__4-ether.webp",
+    "solitude__5-eyed.jpg"
+  ],
+  "omarchy-tokyo-night": [
+    "tokyo-night.webp",
+    "tokyo-night__1-quattro.webp",
+    "tokyo-night__2-swirl-buck.webp",
+    "tokyo-night__3-sunset-lake.webp",
+    "tokyo-night__4-omakub.webp",
+    "tokyo-night__5-oma-cityscape.jpg",
+    "tokyo-night__6-oma.webp"
+  ],
+  "omarchy-vantablack": [
+    "vantablack.webp",
+    "vantablack__1-twisted-stairs.webp",
+    "vantablack__2-layers-deep.webp",
+    "vantablack__3-layers-stacked.webp",
+    "omarchy-vantablack__studio-5.png"
+  ],
+  "omarchy-white": [
+    "white.webp",
+    "white__2-white.webp",
+    "white__3-white.webp",
+    "omarchy-white__studio-4.png",
+    "omarchy-white__studio-5.png"
+  ],
+  "caelestia": [
+    "caelestia__studio-1.png",
+    "caelestia__studio-2.png",
+    "caelestia__studio-3.png",
+    "caelestia__studio-4.png",
+    "caelestia__studio-5.png"
+  ],
+  "ryoku": [
+    "ryoku__studio-1.png",
+    "ryoku__studio-2.png",
+    "ryoku__studio-3.png",
+    "ryoku__studio-4.png",
+    "ryoku__studio-5.png"
+  ],
+  "windows": [
+    "windows__studio-1.png",
+    "windows__studio-2.png",
+    "windows__studio-3.png",
+    "windows__studio-4.png",
+    "windows__studio-5.png"
+  ],
+  "breeze": [
+    "breeze__studio-1.png",
+    "breeze__studio-2.png",
+    "breeze__studio-3.png",
+    "breeze__studio-4.png",
+    "breeze__studio-5.png"
+  ]
 }

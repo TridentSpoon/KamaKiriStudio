@@ -18,6 +18,7 @@
 #include <QUuid>
 #include <QSettings>
 #include <QUrl>
+#include <QImageReader>
 #include <stdexcept>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -67,7 +68,7 @@ QString plasmaScript(const QString &script) {
     return output;
 }
 QJsonArray panels() {
-    QString out = plasmaScript("print(JSON.stringify(panels().map(function(p){return {id:p.id,location:p.location,height:p.height,floating:p.floating};})))");
+    QString out = plasmaScript("print(JSON.stringify(panels().map(function(p){return {id:p.id,location:p.location,height:p.height,floating:p.floating,screen:p.screen};})))");
     QJsonParseError e;
     auto doc = QJsonDocument::fromJson(out.trimmed().toUtf8(), &e);
     if (e.error != QJsonParseError::NoError || !doc.isArray()) fail("Cannot read the Plasma panel layout safely.");
@@ -81,14 +82,29 @@ QString panelScript(const QJsonObject &p) {
     return QString("try {var p=panelById(%1); if(!p) throw new Error('Selected panel no longer exists'); p.location=%2; p.height=%3; p.floating=%4; print('STUDIO_OK');} catch(e){print('STUDIO_ERROR:'+e);}")
         .arg(id).arg(jsonString(edge)).arg(height).arg(p["floating"].toBool()?"true":"false");
 }
+bool panelMatchesState(const QJsonObject &actual,const QJsonObject &expected) {
+    for(const auto &key:{"id","location","height","floating"})if(actual[key]!=expected[key])return false;
+    return !expected.contains("screen")||actual["screen"]==expected["screen"];
+}
+QJsonArray trialPanels(const QJsonObject &request) {
+    if(!request["changePanel"].toBool())return {};
+    return request.contains("panels")?request["panels"].toArray():QJsonArray{request["panel"]};
+}
 void validateRequest(const QJsonObject &r) {
+    if(r["panelPopupActions"].toBool()&&r["desktopLook"]!="caelestia")fail("KamaKiri popup buttons require Kamakiri style.");
+    if(!QStringList{"single","all","span"}.contains(r["wallpaperScope"].toString("single")))fail("Unknown wallpaper display mode.");
     if(!r["desktopLook"].toString().isEmpty()){if(!desktopLooks().contains(r["desktopLook"].toString())||!r["changePanel"].toBool())fail("Choose a panel for the desktop look.");}
 
     if (!QStringList{"caelestia","ryoku","breeze","windows"}.contains(r["preset"].toString()) && r["preset"]!="wallpaper" && omarchyPalette(r["preset"].toString()).isEmpty()) fail("Unknown preset.");
     if (!QRegularExpression("^#[0-9A-Fa-f]{6}$").match(r["accent"].toString()).hasMatch()) fail("Accent must be a six-digit hex color.");
     if(r.contains("widgets")&&!r["widgets"].isArray())fail("Widget choices must be a list.");
     if(r["changePopupLook"].toBool()&&(!QStringList{"rounded","fluent"}.contains(r["popupStyle"].toString())||!QStringList{"desktop","light","dark"}.contains(r["popupMode"].toString())))fail("Unknown popup look.");
-    if (r["changePanel"].toBool()||r["panelPopupActions"].toBool()) panelScript(r["panel"].toObject());
+    if (r["changePanel"].toBool()||r["panelPopupActions"].toBool()) {for(const auto &p:trialPanels(r))panelScript(p.toObject());}
+    for(const auto &key:{"panels","createPanels","removePanelIds","wallpaperDesktopIds"})if(r.contains(key)&&(!r[key].isArray()||r[key].toArray().size()>32))fail("Invalid monitor or panel selection.");
+    QSet<int> ids;for(const auto &v:trialPanels(r)){auto p=v.toObject();panelScript(p);int id=p["id"].toInt(-1);if(ids.contains(id))fail("A panel was selected twice.");ids.insert(id);}
+    for(const auto &id:r["removePanelIds"].toArray()){if(!id.isDouble()||id.toInt(-1)<0||ids.contains(id.toInt()))fail("Invalid panel removal choice.");ids.insert(id.toInt());}
+    for(const auto &v:r["createPanels"].toArray()){auto p=v.toObject();if(!p["screen"].isDouble()||p["screen"].toInt(-1)<0)fail("Invalid new panel monitor.");p["id"]=0;panelScript(p);}
+    if(r.contains("wallpaperDesktopIds")&&!r["wallpaperDesktopIds"].isArray())fail("Invalid monitor selection.");
     if(r["changeWallpaper"].toBool()||r["preset"]=="wallpaper") loadWallpaper(r["wallpaperPath"].toString());
     if(r["changeWallpaper"].toBool()||!r["widgets"].toArray().isEmpty()) {
         if(!r["desktopId"].isDouble()||r["desktopId"].toInt(-1)<0)fail("Choose a desktop target.");
@@ -256,19 +272,20 @@ static void restoreSnapshot(const QString &dir, bool demo) {
         if(snapshot["changePopupLook"].toBool()) {
             QSettings settings;auto old=snapshot["popupBefore"].toObject();for(const auto &key:{"popup/style","popup/mode","desktop/look"}){auto entry=old[key].toObject();if(entry["present"].toBool())settings.setValue(key,entry["value"].toVariant());else settings.remove(key);}settings.sync();if(settings.status()!=QSettings::NoError)fail("Popup look restoration failed.");
         }
-        if(snapshot["changeDesktopLook"].toBool())restoreLook(snapshot["desktopLookBefore"].toObject(),QFileInfo(dir).fileName());
-        if (snapshot["changePanel"].toBool()) {
-            plasmaScript(panelScript(snapshot["panel"].toObject()));
-            auto ps = panels();
-            bool restored = false;
-            for (const auto &p : ps) if (p.toObject()==snapshot["panel"].toObject()) restored=true;
-            if (!restored) fail("Panel restoration could not be verified. Recovery data has been preserved.");
+        QString owner=QFileInfo(dir).fileName();
+        plasmaScript(QString("panels().forEach(function(p){p.currentConfigGroup=['General'];if(p.readConfig('KamaKiriPanelOwner','')===%1)p.remove();});").arg(jsonString(owner)));
+        if(snapshot.contains("desktopStylingBefore"))restoreLook(snapshot["desktopStylingBefore"].toObject(),owner);
+        auto looks=snapshot["desktopLooksBefore"].toArray();if(looks.isEmpty()&&snapshot["changeDesktopLook"].toBool()&&snapshot.contains("desktopLookBefore"))looks.append(snapshot["desktopLookBefore"]);
+        for(const auto &look:looks)restoreLook(look.toObject(),owner);
+        for(const auto &look:snapshot["removedPanelsBefore"].toArray())restoreLook(look.toObject(),owner);
+        if(snapshot["changePanel"].toBool()){
+            auto before=snapshot["panelsBefore"].toArray();if(before.isEmpty()&&snapshot.contains("panel"))before.append(snapshot["panel"]);
+            for(const auto &v:before){plasmaScript(panelScript(v.toObject()));bool restored=false;for(const auto &p:panels())if(panelMatchesState(p.toObject(),v.toObject()))restored=true;if(!restored)fail("Panel restoration could not be verified. Recovery data has been preserved.");}
         }
         if(snapshot["changeWallpaper"].toBool()) {
-            auto old=snapshot["desktop"].toObject();
-            plasmaScript(wallpaperScript(old["id"].toInt(),old["image"].toString()));
-            bool ok=false;for(const auto &d:desktopInventory()["desktops"].toArray())if(d.toObject()["id"]==old["id"]&&d.toObject()["image"]==old["image"])ok=true;
-            if(!ok)fail("Wallpaper restoration could not be verified.");
+            auto before=snapshot["wallpaperBefore"].toArray();if(before.isEmpty())before.append(snapshot["desktop"]);
+            for(const auto &entry:before){auto old=entry.toObject();plasmaScript(wallpaperScript(old["id"].toInt(),old["image"].toString()));bool ok=false;for(const auto &d:desktopInventory()["desktops"].toArray())if(d.toObject()["id"]==old["id"]&&d.toObject()["image"]==old["image"])ok=true;if(!ok)fail("Wallpaper restoration could not be verified.");}
+            QDir generated(dir+"/wallpapers");if(generated.exists())generated.removeRecursively();
         }
         if(snapshot["changeWidgets"].toBool()) {
             QString owner=QFileInfo(dir).fileName();plasmaScript(removeTrialWidgetsScript(owner));
@@ -311,17 +328,26 @@ void Worker::start() {
                 connect(inputMonitor,&InputMonitor::unavailable,this,[this]{if(armed)rollback("Desktop input monitoring became unavailable.");});
             }
             auto ps=panels();
-            if (request["changePanel"].toBool()) {
-                bool found=false;
-                for (const auto &p:ps) if(p.toObject()["id"]==request["panel"].toObject()["id"]) {snapshot["panel"]=p;found=true;}
-                if(!found) fail("The selected panel is no longer available.");
-                panelScript(snapshot["panel"].toObject()); // Check that the original can be restored before changing it.
+            QJsonArray before;
+            for(const auto &target:trialPanels(request)){
+                bool found=false;for(const auto &p:ps)if(p.toObject()["id"]==target.toObject()["id"]){before.append(p);found=true;}
+                if(!found)fail("A selected panel is no longer available.");
             }
+            snapshot["panelsBefore"]=before;if(!before.isEmpty())snapshot["panel"]=before.first();
+            QJsonArray removed;
+            if(request["changePanel"].toBool())for(const auto &id:request["removePanelIds"].toArray()){
+                QJsonObject old;for(const auto &p:ps)if(p.toObject()["id"]==id)old=p.toObject();
+                if(old.isEmpty())fail("The panel selected for removal is unavailable.");
+                if(old["screen"].toInt(0)==primaryDesktopScreen(desktopInventory()["desktops"].toArray()))fail("The primary monitor must retain its panel.");
+                auto saved=snapshotLook(id.toInt(),true);saved["recreate"]=true;removed.append(saved);
+            }
+            snapshot["removedPanelsBefore"]=removed;
+            if(request["changePanel"].toBool())for(const auto &v:request["createPanels"].toArray()){auto panel=v.toObject();panel["id"]=0;panelScript(panel);bool found=false;for(const auto &d:desktopInventory()["desktops"].toArray())if(d.toObject()["screen"]==panel["screen"]&&d.toObject()["active"].toBool(true))found=true;if(!found)fail("A selected monitor disconnected.");}
             if(request["changeWallpaper"].toBool()||!request["widgets"].toArray().isEmpty()) {
                 auto desktopData=desktopInventory();bool found=false;
                 for(const auto &v:desktopData["desktops"].toArray())if(v.toObject()["id"]==request["desktopId"]){snapshot["desktop"]=v;found=true;}
                 if(!found)fail("The selected desktop is unavailable.");
-                if(request["changeWallpaper"].toBool()&&snapshot["desktop"].toObject()["plugin"]!="org.kde.image")fail("Wallpaper trials currently require KDE's Image wallpaper type.");
+                if(request["changeWallpaper"].toBool())snapshot["wallpaperBefore"]=wallpaperTargets(desktopData["desktops"].toArray(),request["desktopId"].toInt(),request["wallpaperScope"].toString("single"),request["wallpaperDesktopIds"].toArray());
                 for(const auto &t:request["widgets"].toArray())if(!desktopData["types"].toArray().contains(t))fail("A selected widget is no longer installed.");
             }
             if(request["changeColors"].toBool(true))copyBackup(configFile(),dir+"/colors-before.ini");
@@ -330,7 +356,7 @@ void Worker::start() {
                 if(!found)fail("The popup panel target is unavailable.");
                 panelPopupActionsScript(request["panel"].toObject()["id"].toInt(),QFileInfo(dir).fileName());
             }
-            if(!request["desktopLook"].toString().isEmpty())snapshot["desktopLookBefore"]=snapshotLook(request["panel"].toObject()["id"].toInt());
+            if(!request["desktopLook"].toString().isEmpty()){snapshot["desktopStylingBefore"]=snapshotDesktopStyling();QJsonArray looks;for(const auto &p:trialPanels(request))looks.append(snapshotLook(p.toObject()["id"].toInt()));snapshot["desktopLooksBefore"]=looks;}
             if(request["changePopupLook"].toBool()) {QSettings settings;QJsonObject before;for(const auto &key:{"popup/style","popup/mode","desktop/look"})before[key]=QJsonObject{{"present",settings.contains(key)},{"value",QJsonValue::fromVariant(settings.value(key))}};snapshot["popupBefore"]=before;}
         }
         snapshot["changeDesktopLook"]=!request["desktopLook"].toString().isEmpty();
@@ -362,21 +388,30 @@ void Worker::start() {
             if(check.group("General").readEntry("ColorScheme",QString())!=QFileInfo(scheme).completeBaseName()) fail("Cannot verify that the trial palette was applied.");
         }
         if(!demo){
-            if(request["changePanel"].toBool()) {
-                plasmaScript(panelScript(request["panel"].toObject()));
-                bool ok=false;
-                for(const auto &p:panels()) if(p.toObject()==request["panel"].toObject()) ok=true;
-                if(!ok) fail("The requested panel settings could not be verified.");
+            for(const auto &target:trialPanels(request)){
+                plasmaScript(panelScript(target.toObject()));bool ok=false;for(const auto &p:panels())if(panelMatchesState(p.toObject(),target.toObject()))ok=true;if(!ok)fail("Panel placement could not be verified.");
+                if(!request["desktopLook"].toString().isEmpty()){auto r=request;r["panel"]=target;applyLook(r,QFileInfo(dir).fileName());}
             }
-            if(!request["desktopLook"].toString().isEmpty())applyLook(request,QFileInfo(dir).fileName());
+            if(request["changePanel"].toBool()){
+                for(const auto &id:request["removePanelIds"].toArray())plasmaScript(QString("var p=panelById(%1);if(p)p.remove();").arg(id.toInt()));
+                for(const auto &v:request["createPanels"].toArray()){
+                    auto p=v.toObject();QString owner=QFileInfo(dir).fileName();
+                    QString script=QString("var p=new Panel();p.currentConfigGroup=['General'];p.writeConfig('KamaKiriPanelOwner',%1);p.screen=%2;print(p.id);").arg(jsonString(owner)).arg(p["screen"].toInt());
+                    bool valid=false;int id=plasmaScript(script).trimmed().toInt(&valid);if(!valid)fail("Cannot create a panel.");p["id"]=id;plasmaScript(panelScript(p));auto r=request;r["panel"]=p;if(r["desktopLook"].toString().isEmpty()){r["desktopLook"]="plasma";r["layoutOnly"]=true;}applyLook(r,owner);
+                }
+            }
             if(request["panelPopupActions"].toBool())plasmaScript(panelPopupActionsScript(request["panel"].toObject()["id"].toInt(),QFileInfo(dir).fileName()));
             if(request["changePopupLook"].toBool()) {QSettings settings;settings.setValue("desktop/look",request["desktopLook"].toString());settings.setValue("popup/style",request["popupStyle"].toString());settings.setValue("popup/mode",request["popupMode"].toString());settings.sync();if(settings.status()!=QSettings::NoError)fail("Cannot save popup look.");}
         }
         if(!demo && request["changeWallpaper"].toBool()) {
-            QString image=QUrl::fromLocalFile(request["wallpaperPath"].toString()).toString();
-            plasmaScript(wallpaperScript(request["desktopId"].toInt(),image));
-            bool ok=false;for(const auto &d:desktopInventory()["desktops"].toArray())if(d.toObject()["id"]==request["desktopId"]&&d.toObject()["image"]==image)ok=true;
-            if(!ok)fail("Wallpaper application could not be verified.");
+            auto targets=snapshot["wallpaperBefore"].toArray();QStringList images;
+            if(request["wallpaperScope"]=="span"){
+                QImageReader reader(request["wallpaperPath"].toString());reader.setAutoTransform(true);auto source=reader.read();if(source.isNull())fail("Cannot decode the wallpaper for spanning.");
+                QList<QRect> geometry;for(const auto &v:targets){auto g=v.toObject()["geometry"].toObject();geometry.append(QRect(g["x"].toInt(),g["y"].toInt(),g["width"].toInt(),g["height"].toInt()));}
+                auto crops=spanWallpaper(source,geometry);QString folder=dir+"/wallpapers";if(!QDir().mkpath(folder))fail("Cannot save split wallpaper images.");
+                for(int i=0;i<crops.size();i++){QString path=folder+"/screen-"+QString::number(i)+".png";if(!crops[i].save(path))fail("Cannot save a split wallpaper image.");QFile::setPermissions(path,QFile::ReadOwner|QFile::WriteOwner);images.append(path);}
+            }else for(int i=0;i<targets.size();i++)images.append(request["wallpaperPath"].toString());
+            for(int i=0;i<targets.size();i++){int id=targets[i].toObject()["id"].toInt();QString image=QUrl::fromLocalFile(images[i]).toString();plasmaScript(wallpaperScript(id,image));bool ok=false;for(const auto &d:desktopInventory()["desktops"].toArray())if(d.toObject()["id"].toInt()==id&&d.toObject()["image"]==image)ok=true;if(!ok)fail("Wallpaper application could not be verified.");}
         }
         if(!demo && !request["widgets"].toArray().isEmpty()) {
             plasmaScript(addWidgetsScript(request["desktopId"].toInt(),request["widgets"].toArray(),QFileInfo(dir).fileName()));
@@ -421,7 +456,8 @@ void Worker::tick() {
             setState("kept", "Changes kept.");
             poll.stop(); QCoreApplication::quit(); return;
         }
-        if(policy.shouldRevert(trialClock.elapsed(),ownerAlive)) rollback("No input was detected during the first 15 seconds.");
+        if(policy.shouldRevert(trialClock.elapsed(),ownerAlive)) {rollback("No input was detected during the first 15 seconds.");return;}
+        if(!policy.interacted){int remaining=qMax(0,15-int(trialClock.elapsed()/1000));if(status["remainingSeconds"].toInt(-1)!=remaining){status["remainingSeconds"]=remaining;setState("pending","Keep these changes? Try them, then choose Yes or No.");}}
     } catch(const std::exception &e) {rollback(QString::fromUtf8(e.what()));}
 }
 void Worker::rollback(const QString &reason) {
@@ -437,7 +473,7 @@ void Worker::rollback(const QString &reason) {
     QCoreApplication::quit();
 }
 void recover(const QString &dir,bool demo) {
-    restoreSnapshot(dir,demo);
+    try {restoreSnapshot(dir,demo);}catch(const std::exception &e){writeJson(dir+"/status.json",{{"state","recovery-needed"},{"message",QString("Restoration could not finish: ")+QString::fromUtf8(e.what())}});throw;}
     auto status=readJson(dir+"/status.json");
     status["state"]="reverted";status["message"]="Previous settings restored from the saved snapshot.";
     writeJson(dir+"/status.json",status);

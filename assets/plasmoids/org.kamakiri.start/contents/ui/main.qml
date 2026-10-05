@@ -1,13 +1,32 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
+import QtQuick.Window
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.kirigami as Kirigami
 PlasmoidItem {
     id: root
     preferredRepresentation: compactRepresentation
+    // Keep the popup midpoint anchored to the Windows logo as tasks move.
+    Item {
+        id: centeredPopupAnchor
+        parent: root.compactRepresentationItem ? root.compactRepresentationItem : root
+        width: 24
+        height: 24
+        anchors.centerIn: parent
+    }
+    Timer {
+        id: positionPopup
+        interval: 0
+        onTriggered: {
+            if (!root.expanded || root.Plasmoid.configuration.look !== "fluent11") return;
+            const popup = root.fullRepresentationItem ? root.fullRepresentationItem.Window.window : null;
+            if (popup && popup.visualParent !== undefined) popup.visualParent = centeredPopupAnchor;
+        }
+    }
     Plasmoid.icon: "view-app-grid"
     compactRepresentation: Item {
+        id: startButton
         Layout.minimumWidth: Kirigami.Units.iconSizes.medium
         Layout.minimumHeight: Kirigami.Units.iconSizes.medium
         Rectangle { anchors.centerIn: parent; width: 24; height: 24; color: "transparent"
@@ -28,6 +47,6 @@ PlasmoidItem {
         appletInterface: root
         onFavoritesEdited: ids => root.Plasmoid.configuration.favorites = ids
         onDismiss: root.expanded = false
-        Connections { target: root; function onExpandedChanged() { if (root.expanded) { start.searchText = ""; start.focusSearch(); } } }
+        Connections { target: root; function onExpandedChanged() { if (root.expanded) { start.searchText = ""; start.focusSearch(); positionPopup.restart(); } } }
     }
 }

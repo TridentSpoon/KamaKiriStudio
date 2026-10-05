@@ -7,16 +7,15 @@ A native KDE desktop studio that keeps Plasma and KWin as its base. Inspired by 
 ## Features
 
 - Complete KDE color palettes, editable accents and panel placement, height and floating controls.
-- A local wallpaper picker with optional matching background, text, selection and accent colors.
+- A honeycomb gallery with 72 bundled theme wallpapers, excluding logo-only variants, credited “As seen in Omarchy”, and a local wallpaper picker with optional matching colors.
+- Wallpaper placement on one display, the same image on the enabled displays, or one image spanning the KDE display arrangement.
 - An installed KDE widget collection: clock, media player, CPU, memory, application dashboard, calendar, volume and network. Existing widgets are preserved and duplicate types are skipped.
-- A dashboard with live clock, memory and disk information, MPRIS media controls, KRunner launcher and KDE settings shortcuts.
 - Data-only profile import and export. Import previews choices before applying them; desktop and panel targets stay local to this machine.
-- A picker for installed desktop/window-manager sessions, handing off to KDE’s logout confirmation and the login-screen session menu.
 - About, manual GitHub release checks and an optional five-minute update monitor while the app is open. No automatic downloads or installations.
 
 The launcher and dashboard now open as separate rounded, frameless popups, with optional compositor blur. **Reference rounded** uses larger corners inspired by the supplied desktop images. **Fluent inspired** uses tighter corners, neutral surfaces and lighter borders. Choose **Follow desktop**, **Light** or **Dark**. These are original Qt/KDE interfaces; they do not use Microsoft components or replace Plasma with Quickshell. Blur depends on the existing KWin blur effect; it is requested, never forced on. Popups close with Escape, their close button or focus moving to another application. KWin controls placement on Wayland.
 
-In **Appearance**, use **Popup look** and **Preview launcher/dashboard**. The **Slim left rail** panel preset selects a 40px floating panel and adds two native launch buttons. A **Floating bottom bar** preset is also available. These presets and popup-look changes turn off **Include KDE color changes** so your palette stays unchanged; you can enable it explicitly. Apply & try uses the existing Yes/No recovery flow for panel geometry, popup preferences and newly added panel buttons. Existing widgets are preserved. The panel itself uses your installed Plasma theme’s rounded floating shape.
+In **Appearance → Advanced settings**, use **Popup look** and **Preview launcher/dashboard**. The **Slim left rail** panel preset selects a 40px floating panel and adds two native launch buttons. A **Floating bottom bar** preset is also available. These presets and popup-look changes turn off **Include KDE color changes** so your palette stays unchanged; you can enable it explicitly. Apply & try uses the existing Yes/No recovery flow for panel geometry, popup preferences and newly added panel buttons. Existing widgets are preserved. The panel itself uses your installed Plasma theme’s rounded floating shape.
 
 The app launcher filters installed application metadata and opens the selected app through KDE’s ApplicationLauncherJob. Search input is never treated as a shell command. The popup dashboard has calendar, media and CPU/memory/disk/network pages. GPU, weather and audio visualizers are not included. The manager follows the KDE system theme independently of popup selection.
 
@@ -38,19 +37,15 @@ Requires C++17, CMake, Qt6 Widgets/DBus/Network/Test/QuickWidgets, KDE Framework
 
 ## Try changes and recover
 
-Choose a palette in Appearance. Choose a local PNG, JPEG, WebP or BMP in **Wallpaper and widgets**, optionally enable matching colors, select a desktop target and select widgets. **Apply & try** applies the choices from both pages together.
+Choose a palette in Appearance. Choose a local PNG, JPEG, WebP or BMP in **Appearance → Advanced settings**, optionally enable matching colors, select a desktop target and select widgets. **Apply & try** applies the choices from both pages together.
 
-The confirmation has **Yes** and **No**, with no visible countdown. If there is no input for the first 15 seconds after changes finish applying, they revert. The click that started Apply is excluded. The first subsequent keyboard, pointer or touch input permanently removes the timeout for that trial. Yes keeps the changes; No or closing the confirmation restores them. You can test other windows with the confirmation open.
+The confirmation has **Yes** and **No**, with an initial 15-second countdown that disappears after the first input. If there is no input for the first 15 seconds after changes finish applying, they revert. The click that started Apply is excluded. The first subsequent keyboard, pointer or touch input permanently removes the timeout for that trial. Yes keeps the changes; No or closing the confirmation restores them. You can test other windows with the confirmation open.
 
 An independent worker snapshots the settings before mutation. If the manager closes or its heartbeat stops for four seconds, the trial reverts. If the worker also crashes or the machine restarts, startup/login recovery restores abandoned trials. Recovery failures preserve snapshots and are reported; restoration cannot be guaranteed when Plasma or the original desktop/panel is unavailable.
 
-Wallpaper trials currently support KDE’s **Image** wallpaper type and change only its image setting. Widgets added by the trial are marked with its transaction ID; rollback removes those widgets, leaving existing widgets alone. Kept widgets can be moved/resized using Plasma’s Edit Mode. Icons, authentication, login screen, lock screen, services and compositor remain unchanged.
+Wallpaper trials support KDE’s **Image** wallpaper type. All-display and spanning choices target connected displays in the current activity; widgets still target the selected desktop. Spanning crops follow the arrangement in KDE Display Settings; reapply after changing that arrangement. Kept spanning crops remain in the private trial directory because Plasma uses those files. Reverting restores every affected wallpaper before removing the crops. Widgets added by the trial are marked with its transaction ID; rollback removes those widgets, leaving existing widgets alone. Kept widgets can be moved/resized using Plasma’s Edit Mode. Icons, authentication, login screen, lock screen, services and compositor remain unchanged.
 
 Wayland activity monitoring requires version 2 of `ext_idle_notifier_v1`, using inhibitor-independent input notifications. It does not capture keys, text or pointer coordinates. Unsupported sessions refuse appearance changes. X11 uses KIdleTime but has not been live-tested here.
-
-## Desktop sessions
-
-The session page discovers installed Wayland/X11 session definitions without executing their commands or installing window managers. **Log out to switch…** opens KDE’s logout confirmation. Choose the target session at the login screen. It does not automatically select another session or change the display manager. Another Wayland compositor runs as a separate session; it cannot replace KWin within a running Plasma Wayland session.
 
 ## Updates and privacy
 
@@ -97,3 +92,11 @@ Original application code is MIT. Omarchy palette attribution and permission are
 The Studio manager follows the active KDE system colors, font and widget style. Rounded/Fluent popup choices affect the launcher and dashboard only.
 
 Desktop look now includes **Default Plasma**, using native KDE Application Launcher and Breeze styling, and **Kamakiri style**, the independently developed rounded layout. Existing Caelestia identifiers remain internal for compatibility with saved profiles. These experimental look changes are pending recovery validation; no live appearance is applied by selecting a look.
+
+**Update now** in About and updates checks the latest official stable GitHub release and installs only a newer version. It verifies the GitHub archive SHA-256 and release binary hash, checks that the binary runs, and uses the installed updater rather than downloaded scripts. Updates are blocked during unfinished appearance trials. A development build newer than the published release is retained. Restart the app after an update.
+
+Appearance keeps the desktop look, theme preview, monitor switches, per-monitor panel position, wallpaper placement and gallery together. Detailed color, panel and popup settings are under **Advanced settings**. **Apply wallpaper** starts a wallpaper-only trial. Monitor switches scope wallpapers and panel changes; KDE colors and window styling remain session-wide. **None** removes secondary panels with recovery snapshots and is disabled on the primary monitor. Choosing a position on a monitor without a panel creates one, which No removes.
+
+Appearance now includes wallpaper placement, theme galleries, local image selection and native Plasma widget choices. Each named theme offers five wallpapers, with the extra Retro 82 and Tokyo Night artwork retained. Local images and widget choices are under Advanced settings.
+
+Fluent 10 and Fluent 11 place the native clock/calendar and Desktop Peek at the far right. KamaKiri Launcher and Dashboard panel shortcuts are exclusive to Kamakiri style. Existing unrelated widgets stay before the right-hand tray/clock section.
