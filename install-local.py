@@ -24,9 +24,13 @@ def main():
     parser.add_argument('--prefix',type=pathlib.Path,default=pathlib.Path.home()/'.local')
     parser.add_argument('--config-root',type=pathlib.Path,default=pathlib.Path(os.environ.get('XDG_CONFIG_HOME',str(pathlib.Path.home()/'.config'))))
     parser.add_argument('--dry-run',action='store_true')
+    parser.add_argument('--bundle',type=pathlib.Path,help=argparse.SUPPRESS)
     args=parser.parse_args()
     if os.getuid()==0:raise SystemExit('Install as your desktop user, without sudo.')
-    bundle=pathlib.Path(__file__).resolve().parent
+    trusted=pathlib.Path(__file__).resolve().parent
+    bundle=args.bundle.resolve() if args.bundle else trusted
+    release=json.loads((bundle/'release.json').read_text())
+    if release.get('app')!='KamaKiriStudio':raise SystemExit('Invalid installation bundle.')
     source=bundle/'bin/kamakiri-studio'
     if not source.is_file():raise SystemExit('Build the binary and place it in bin/kamakiri-studio first.')
     prefix=args.prefix.expanduser().absolute();config=args.config_root.expanduser().absolute()
@@ -36,7 +40,7 @@ def main():
     receipt=prefix/'share/kamakiri-studio/installation.json'
     entries={
         binary:(source.read_bytes(),0o755),
-        launcher:((f'[Desktop Entry]\nType=Application\nName=KamaKiriStudio\nComment=KDE appearance trials and desktop session switching\nExec={desktop_quote(binary)}\nIcon=preferences-desktop-theme-global\nTerminal=false\nCategories=Settings;DesktopSettings;Qt;KDE;\n').encode(),0o644),
+        launcher:((f'[Desktop Entry]\nType=Application\nName=KamaKiriStudio\nComment=KDE appearance, wallpapers and widgets\nExec={desktop_quote(binary)}\nIcon=preferences-desktop-theme-global\nTerminal=false\nCategories=Settings;DesktopSettings;Qt;KDE;\n').encode(),0o644),
         startup:((f'[Desktop Entry]\nType=Application\nName=KamaKiriStudio recovery\nComment=Restore abandoned appearance trials at KDE login\nExec={desktop_quote(binary)} --recover-all\nIcon=preferences-desktop-theme-global\nTerminal=false\nNoDisplay=true\nOnlyShowIn=KDE;\n').encode(),0o644),
     }
     for name,mode,icon in [('KamaKiri Launcher','launcher','view-app-grid'),('KamaKiri Dashboard','dashboard','dashboard-show')]:
@@ -47,6 +51,8 @@ def main():
         for asset in sorted(assets.rglob("*")):
             if asset.is_symlink():raise SystemExit(f"Refusing a symlink asset: {asset}")
             if asset.is_file():entries[destination/asset.relative_to(assets)]=(asset.read_bytes(),0o644)
+    for name in ('update-local.py','install-local.py'):
+        entries[prefix/'share/kamakiri-studio'/name]=((trusted/name).read_bytes(),0o644)
     previous={}
     if receipt.exists():
         manifest=json.loads(receipt.read_text())
@@ -63,9 +69,19 @@ def main():
     for target in [*entries,receipt]:
         target.parent.mkdir(parents=True,exist_ok=True)
         if target.parent.is_symlink() or target.parent.stat().st_uid!=os.getuid():raise SystemExit(f'Destination directory must belong to you and not be a symlink: {target.parent}')
-    for target,(data,mode) in entries.items():atomically_write(target,data,mode)
-    manifest={'app':'KamaKiriStudio','version':'0.5.0','files':{str(target):sha(data) for target,(data,_) in entries.items()}}
-    atomically_write(receipt,(json.dumps(manifest,indent=2)+'\n').encode(),0o600)
+    backups={target:(target.read_bytes(),target.stat().st_mode&0o777) if target.exists() else None for target in [*entries,receipt]}
+    written=[]
+    try:
+        for target,(data,mode) in entries.items():
+            atomically_write(target,data,mode);written.append(target)
+        manifest={'app':'KamaKiriStudio','version':release['version'],'files':{str(target):sha(data) for target,(data,_) in entries.items()}}
+        atomically_write(receipt,(json.dumps(manifest,indent=2)+'\n').encode(),0o600);written.append(receipt)
+    except Exception:
+        for target in reversed(written):
+            previous_file=backups[target]
+            if previous_file is None:target.unlink(missing_ok=True)
+            else:atomically_write(target,*previous_file)
+        raise
     updater=shutil.which('update-desktop-database')
     if updater:subprocess.run([updater,str(launcher.parent)],check=False)
     print('Installed. Open KamaKiriStudio from the Applications menu.')

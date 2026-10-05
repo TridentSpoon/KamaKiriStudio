@@ -8,6 +8,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <poll.h>
 
 namespace Studio {
 struct InputMonitor::Impl {
@@ -73,19 +74,31 @@ bool InputMonitor::prepare() {
     if(wl_display_roundtrip(impl->display)<0||!impl->manager||impl->seats.empty())return false;
     impl->socket=new QSocketNotifier(wl_display_get_fd(impl->display),QSocketNotifier::Read,this);
     connect(impl->socket,&QSocketNotifier::activated,this,[this]{
-        if(wl_display_dispatch(impl->display)<0){impl->socket->setEnabled(false);emit unavailable();}
-        else wl_display_flush(impl->display);
+        if(!impl->listening)return;
+        // Drain queued events before preparing a read; never wait for another event.
+        while(wl_display_prepare_read(impl->display)!=0){
+            if(wl_display_dispatch_pending(impl->display)<0){impl->socket->setEnabled(false);emit unavailable();return;}
+            if(!impl->listening)return;
+        }
+        pollfd fd{wl_display_get_fd(impl->display),POLLIN,0};
+        if(::poll(&fd,1,0)>0&&(fd.revents&POLLIN)){
+            if(wl_display_read_events(impl->display)<0){impl->socket->setEnabled(false);emit unavailable();return;}
+        }else wl_display_cancel_read(impl->display);
+        if(wl_display_dispatch_pending(impl->display)<0){impl->socket->setEnabled(false);emit unavailable();return;}
+        wl_display_flush(impl->display);
     });
+    impl->socket->setEnabled(false);
     return true;
 }
 bool InputMonitor::arm() {
     if(!impl->manager||impl->seats.empty())return false;
-    stop();impl->listening=true;
+    stop();impl->listening=true;impl->socket->setEnabled(true);
     for(const auto &s:impl->seats)impl->subscribe(s.object);
     return wl_display_flush(impl->display)>=0;
 }
 void InputMonitor::stop() {
     impl->listening=false;
+    if(impl->socket)impl->socket->setEnabled(false);
     for(auto n:impl->notifications)ext_idle_notification_v1_destroy(n);
     impl->notifications.clear();
     if(impl->display)wl_display_flush(impl->display);

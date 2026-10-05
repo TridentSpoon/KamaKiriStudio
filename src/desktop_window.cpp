@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "window.h"
-#include "popup.h"
+#include "wallpaper_gallery.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -9,25 +9,17 @@
 #include <QSignalBlocker>
 #include <QFileDialog>
 #include <QScrollArea>
-#include <QStorageInfo>
-#include <QDir>
-#include <QFile>
-#include <QDateTime>
 #include <QStandardPaths>
-#include <QDBusConnectionInterface>
-#include <QDBusArgument>
-#include <QDBusPendingCallWatcher>
-#include <QDBusPendingReply>
 #include <QUrl>
 using namespace Studio;
 static QLabel *text(const QString &s,const QString &name={}) {auto l=new QLabel(s);l->setWordWrap(true);l->setObjectName(name);return l;}
 static QFrame *box() {auto b=new QFrame;b->setObjectName("card");return b;}
 QWidget *StudioWindow::desktopPage() {
-    auto scroll=new QScrollArea;scroll->setWidgetResizable(true);auto root=new QWidget;scroll->setWidget(root);
-    auto v=new QVBoxLayout(root);v->setContentsMargins(0,0,6,0);v->setSpacing(12);
-    v->addWidget(text("More than a color scheme.","hero"));
-    v->addWidget(text("Wallpapers, matching colors and native Plasma widgets. Preview your choices before applying.","subtitle"));
-    desktopSelect=new QComboBox;v->addWidget(text("Desktop target","section"));v->addWidget(desktopSelect);
+    auto root=new QWidget;auto v=new QVBoxLayout(root);v->setContentsMargins(0,0,0,0);v->setSpacing(12);
+    desktopSelect=appearanceDisplay;wallpaperScope=appearanceScope;wallpaperTheme=themeSelect;wallpaperGallery=appearanceGallery;
+    wallpaperScope->addItem("Selected display","single");wallpaperScope->addItem("Same wallpaper on enabled displays","all");wallpaperScope->addItem("Span across enabled displays","span");wallpaperScope->setCurrentIndex(1);
+    v->addWidget(text("Local wallpaper and Plasma widgets","section"));
+    v->addWidget(text("Widgets use the selected display. Theme wallpaper choices and monitor placement are above.","subtitle"));
     wallpaperPreview=new QLabel("Choose a wallpaper from your pictures");wallpaperPreview->setAlignment(Qt::AlignCenter);wallpaperPreview->setMinimumHeight(140);wallpaperPreview->setMaximumHeight(180);v->addWidget(wallpaperPreview);
     auto row=new QHBoxLayout;auto pick=new QPushButton("Choose wallpaper…");auto clear=new QPushButton("Clear wallpaper choice");row->addWidget(pick);row->addWidget(clear);v->addLayout(row);
     wallpaperEnabled=new QCheckBox("Include this wallpaper in the trial");wallpaperEnabled->setEnabled(false);v->addWidget(wallpaperEnabled);
@@ -35,12 +27,7 @@ QWidget *StudioWindow::desktopPage() {
     connect(pick,&QPushButton::clicked,this,[this]{
         if(busy){error("Finish the current trial before choosing another wallpaper.");return;}
         auto path=QFileDialog::getOpenFileName(this,"Choose a local wallpaper",QStandardPaths::writableLocation(QStandardPaths::PicturesLocation),"Images (*.png *.jpg *.jpeg *.webp *.bmp)");if(path.isEmpty())return;
-        try {auto image=loadWallpaper(path);wallpaperPath=QFileInfo(path).canonicalFilePath();selectedWallpaper=image;derivedPalette=wallpaperPalette(wallpaperPath);
-            wallpaperPreview->setPixmap(QPixmap::fromImage(image).scaled(700,210,Qt::KeepAspectRatio,Qt::SmoothTransformation));
-            wallpaperEnabled->setEnabled(true);wallpaperEnabled->setChecked(true);
-            themeWallpaperEnabled->setChecked(false);if(wallpaperColors->isChecked())choosePreset("wallpaper");
-            updatePreview();
-        }catch(const std::exception &e){error(e.what());}
+        selectWallpaper(path,wallpaperColors->isChecked());
     });
     connect(clear,&QPushButton::clicked,this,[this]{if(busy)return;wallpaperPath.clear();selectedWallpaper={};derivedPalette={};wallpaperEnabled->setChecked(false);wallpaperEnabled->setEnabled(false);wallpaperPreview->setText("Choose a wallpaper from your pictures");if(preset=="wallpaper")choosePreset("omarchy-osaka-jade");updatePreview();});
     connect(wallpaperColors,&QCheckBox::toggled,this,[this](bool on){if(on&&!wallpaperPath.isEmpty())choosePreset("wallpaper");else if(preset=="wallpaper")choosePreset("omarchy-osaka-jade");});
@@ -52,52 +39,42 @@ QWidget *StudioWindow::desktopPage() {
     auto types=safeWidgetTypes();for(int i=0;i<types.size();i++){auto check=new QCheckBox(names[i]);check->setProperty("plugin",types[i]);widgetChoices.append(check);widgetGrid->addWidget(check,i/2,i%2);}
     v->addWidget(widgets);
     auto applyDesktop=new QPushButton("Apply & try desktop choices");applyDesktop->setObjectName("primary");connect(applyDesktop,&QPushButton::clicked,this,&StudioWindow::beginTrial);desktopApply=applyDesktop;v->addWidget(applyDesktop);
-    v->addWidget(text("Uses the selected Appearance palette and panel settings too. No downloads or third-party widget code. Wallpaper trials support KDE’s Image wallpaper type.","subtitle"));v->addStretch();return scroll;
-}
-QWidget *StudioWindow::dashboardPage() {
-    auto root=new QWidget;auto v=new QVBoxLayout(root);v->setContentsMargins(0,0,0,0);v->setSpacing(15);
-    v->addWidget(text("Your desktop, at a glance.","hero"));v->addWidget(text("Live widgets and controls, connected to your existing Plasma session.","subtitle"));
-    auto clock=box();auto cv=new QVBoxLayout(clock);clockLabel=text("","hero");dateLabel=text("","subtitle");cv->addWidget(clockLabel);cv->addWidget(dateLabel);systemLabel=text("");cv->addWidget(systemLabel);v->addWidget(clock);
-    auto popups=new QHBoxLayout;for(const auto &entry:QList<QStringList>{{"Rounded app launcher","launcher"},{"Rounded dashboard","dashboard"}}){auto button=new QPushButton(entry[0]);popups->addWidget(button);connect(button,&QPushButton::clicked,this,[this,mode=entry[1]]{auto popup=new StudioPopup(mode=="launcher"?StudioPopup::Launcher:StudioPopup::Dashboard,demoMode,this,popupStyle->currentData().toString(),popupMode->currentData().toString());popup->setAttribute(Qt::WA_DeleteOnClose);popup->show();});}v->addLayout(popups);
-    auto launcher=new QPushButton("KRunner · apps, files and actions");launcher->setObjectName("primary");launcher->setEnabled(!demoMode&&!QStandardPaths::findExecutable("krunner").isEmpty());
-    connect(launcher,&QPushButton::clicked,this,[this]{if(!QProcess::startDetached(QStandardPaths::findExecutable("krunner"),{}))error("KRunner could not be opened.");});v->addWidget(launcher);
-    auto media=box();auto mv=new QVBoxLayout(media);mv->addWidget(text("Now playing","section"));playerSelect=new QComboBox;mv->addWidget(playerSelect);trackLabel=text("Open a media player to see its controls here.");mv->addWidget(trackLabel);
-    auto controls=new QHBoxLayout;for(const auto &entry:QList<QStringList>{{"Previous","Previous"},{"Play / pause","PlayPause"},{"Next","Next"}}){auto b=new QPushButton(entry[0]);mediaButtons.append(b);b->setEnabled(false);controls->addWidget(b);connect(b,&QPushButton::clicked,this,[this,method=entry[1]]{mediaAction(method);});}mv->addLayout(controls);v->addWidget(media);
-    connect(playerSelect,&QComboBox::currentIndexChanged,this,[this]{refreshDashboard();});
-    auto quick=box();auto qv=new QVBoxLayout(quick);qv->addWidget(text("Quick controls","section"));auto grid=new QGridLayout;qv->addLayout(grid);
-    const QList<QStringList> modules{{"Sound","kcm_pulseaudio"},{"Wi-Fi and network","kcm_networkmanagement"},{"Bluetooth","kcm_bluetooth"},{"Displays","kcm_kscreen"},{"Power","kcm_powerdevilprofilesconfig"},{"Shortcuts","kcm_keys"}};
-    for(int i=0;i<modules.size();i++){auto b=new QPushButton(modules[i][0]);b->setEnabled(!demoMode&&!QStandardPaths::findExecutable("systemsettings").isEmpty());grid->addWidget(b,i/3,i%3);connect(b,&QPushButton::clicked,this,[this,module=modules[i][1]]{if(!QProcess::startDetached(QStandardPaths::findExecutable("systemsettings"),{module}))error("KDE settings could not be opened.");});}
-    v->addWidget(quick);v->addWidget(text("The launcher and settings use KDE’s own interfaces. Add the Application dashboard widget for a desktop app grid.","subtitle"));v->addStretch();
-    dashboardTimer.setInterval(1500);connect(&dashboardTimer,&QTimer::timeout,this,[this]{if(pages->currentIndex()==2)refreshDashboard();});dashboardTimer.start();QTimer::singleShot(0,this,&StudioWindow::refreshDashboard);return root;
+    v->addWidget(text("Uses the selected Appearance palette and panel settings too. No downloads or third-party widget code. Wallpaper trials support KDE’s Image wallpaper type.","subtitle"));v->addStretch();return root;
 }
 void StudioWindow::refreshDesktopTools() {
     auto old=desktopSelect->currentData();desktopSelect->clear();
     QJsonObject data;
     try {if(demoMode)data={{"desktops",QJsonArray{QJsonObject{{"id",1},{"screen",0}}}},{"types",QJsonArray::fromStringList(safeWidgetTypes())}};else data=desktopInventory();}
     catch(const std::exception &e){desktopApply->setEnabled(false);desktopSelect->setToolTip(e.what());return;}
-    for(const auto &value:data["desktops"].toArray()){auto d=value.toObject();if(d["screen"].toInt(-1)<0)continue;desktopSelect->addItem(QString("Screen %1 · desktop %2").arg(d["screen"].toInt()+1).arg(d["id"].toInt()),d["id"].toInt());}
+    for(const auto &value:data["desktops"].toArray()){auto d=value.toObject();if(d["screen"].toInt(-1)<0||!d["active"].toBool(true))continue;desktopSelect->addItem(QString("Screen %1 · desktop %2").arg(d["screen"].toInt()+1).arg(d["id"].toInt()),d["id"].toInt());}
     if(desktopSelect->findData(old)>=0)desktopSelect->setCurrentIndex(desktopSelect->findData(old));
+    refreshMonitorControls(data["desktops"].toArray());
     for(auto choice:widgetChoices){bool available=data["types"].toArray().contains(choice->property("plugin").toString());choice->setEnabled(available);if(!available){choice->setChecked(false);choice->setToolTip("This KDE widget is not installed.");}}
     desktopApply->setEnabled(apply->isEnabled()&&desktopSelect->count()>0);
 }
-void StudioWindow::refreshDashboard() {
-    auto now=QDateTime::currentDateTime();clockLabel->setText(now.toString("HH:mm"));dateLabel->setText(now.toString("dddd, d MMMM yyyy"));
-    QFile mem("/proc/meminfo");quint64 total=0,available=0;if(mem.open(QIODevice::ReadOnly)){for(const auto &line:mem.readAll().split('\n')){auto parts=line.simplified().split(' ');if(parts.size()>1){if(parts[0]=="MemTotal:")total=parts[1].toULongLong();if(parts[0]=="MemAvailable:")available=parts[1].toULongLong();}}}
-    auto storage=QStorageInfo(QDir::homePath());systemLabel->setText(QString("Memory %1 / %2 GB  ·  Disk %3 GB available").arg((total-available)/1048576.,0,'f',1).arg(total/1048576.,0,'f',1).arg(storage.bytesAvailable()/1073741824.,0,'f',1));
-    if(demoMode){trackLabel->setText("Preview mode · live media controls connect in your desktop session.");return;}
-    auto bus=QDBusConnection::sessionBus();auto services=bus.interface()->registeredServiceNames();if(!services.isValid())return;
-    QString selected=playerSelect->currentData().toString();QSignalBlocker block(playerSelect);playerSelect->clear();for(const auto &name:services.value())if(name.startsWith("org.mpris.MediaPlayer2."))playerSelect->addItem(name.mid(23),name);
-    int index=playerSelect->findData(selected);if(index>=0)playerSelect->setCurrentIndex(index);
-    QString service=playerSelect->currentData().toString();for(auto b:mediaButtons)b->setEnabled(false);if(service.isEmpty()){trackLabel->setText("Open a media player to see its controls here.");return;}
-    auto m=QDBusMessage::createMethodCall(service,"/org/mpris/MediaPlayer2","org.freedesktop.DBus.Properties","GetAll");m<<"org.mpris.MediaPlayer2.Player";
-    auto reply=bus.call(m,QDBus::Block,500);if(reply.type()==QDBusMessage::ErrorMessage){trackLabel->setText("Media player is not responding.");return;}
-    auto values=qdbus_cast<QVariantMap>(reply.arguments().value(0));auto metadata=qdbus_cast<QVariantMap>(values["Metadata"]);
-    trackLabel->setText(metadata["xesam:title"].toString()+"\n"+metadata["xesam:artist"].toStringList().join(", ")+" · "+values["PlaybackStatus"].toString());
-    mediaButtons[0]->setEnabled(values["CanGoPrevious"].toBool());mediaButtons[1]->setEnabled(values["CanControl"].toBool()&&(values["CanPlay"].toBool()||values["CanPause"].toBool()));mediaButtons[2]->setEnabled(values["CanGoNext"].toBool());
+void StudioWindow::selectWallpaper(const QString &path,bool matchColors) {
+    try {auto image=loadWallpaper(path);themeWallpaperEnabled->setChecked(false);wallpaperPath=QFileInfo(path).canonicalFilePath();selectedWallpaper=image;derivedPalette=wallpaperPalette(wallpaperPath);
+        wallpaperPreview->setPixmap(QPixmap::fromImage(image).scaled(700,180,Qt::KeepAspectRatio,Qt::SmoothTransformation));wallpaperEnabled->setEnabled(true);wallpaperEnabled->setChecked(true);if(wallpaperGallery)wallpaperGallery->setSelected(wallpaperPath);if(appearanceGallery)appearanceGallery->setSelected(wallpaperPath);if(matchColors)choosePreset("wallpaper");updatePreview();
+    }catch(const std::exception &e){error(e.what());}
 }
-void StudioWindow::mediaAction(const QString &method) {
-    auto service=playerSelect->currentData().toString();if(!service.startsWith("org.mpris.MediaPlayer2."))return;
-    auto m=QDBusMessage::createMethodCall(service,"/org/mpris/MediaPlayer2","org.mpris.MediaPlayer2.Player",method);
-    auto watcher=new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(m,1000),this);
-    connect(watcher,&QDBusPendingCallWatcher::finished,this,[this,watcher]{QDBusPendingReply<> reply=*watcher;if(reply.isError())error("The media player refused this action.");watcher->deleteLater();refreshDashboard();});
+void StudioWindow::refreshWallpaperGallery() {
+    if(!wallpaperTheme||!wallpaperGallery)return;
+    int index=wallpaperTheme->findData(preset);if(index>=0){QSignalBlocker block(wallpaperTheme);wallpaperTheme->setCurrentIndex(index);}
+    wallpaperGallery->setWallpapers(themeWallpapers(wallpaperTheme->currentData().toString()));wallpaperGallery->setSelected(wallpaperPath);if(appearanceGallery){appearanceGallery->setWallpapers(themeWallpapers(wallpaperTheme->currentData().toString()));appearanceGallery->setSelected(wallpaperPath);}
+}
+
+void StudioWindow::refreshMonitorControls(const QJsonArray &desktops) {
+    QMap<int,QPair<bool,QString>> choices;
+    for(int i=0;i<monitorEnabled.size();i++)choices[monitorEnabled[i]->property("screen").toInt()]={monitorEnabled[i]->isChecked(),monitorEdges[i]->currentData().toString()};
+    while(auto item=monitorLayout->takeAt(0)){delete item->widget();delete item;}monitorEnabled.clear();monitorEdges.clear();
+    for(const auto &entry:desktops){auto desktop=entry.toObject();int screen=desktop["screen"].toInt(-1);if(screen<0||!desktop["active"].toBool(true))continue;
+        auto row=new QWidget;auto layout=new QHBoxLayout(row);layout->setContentsMargins(0,0,0,0);
+        auto enabled=new QCheckBox(QString("Monitor %1").arg(screen+1));enabled->setProperty("screen",screen);enabled->setProperty("desktopId",desktop["id"].toInt());enabled->setChecked(choices.contains(screen)?choices[screen].first:true);layout->addWidget(enabled);
+        auto edge=new QComboBox;for(const auto &pair:QList<QStringList>{{"None","none"},{"Top","top"},{"Right","right"},{"Bottom","bottom"},{"Left","left"}})edge->addItem(pair[0],pair[1]);
+        QJsonObject panel;for(const auto &p:inventory["panels"].toArray())if(p.toObject()["screen"].toInt(0)==screen){panel=p.toObject();break;}
+        edge->setProperty("panelId",panel.isEmpty()?-1:panel["id"].toInt());edge->setCurrentIndex(qMax(0,edge->findData(choices.contains(screen)?choices[screen].second:panel["location"].toString("none"))));
+        bool primary=screen==primaryDesktopScreen(desktops);if(primary){enabled->setText(enabled->text()+" · primary");QString selection=edge->currentData().toString();edge->removeItem(0);edge->setCurrentIndex(edge->findData(selection=="none"?"bottom":selection));}
+        edge->setToolTip(primary?"The primary monitor keeps a panel.":"None removes this monitor's panel; No restores it during a trial.");
+        edge->setEnabled(enabled->isChecked());connect(enabled,&QCheckBox::toggled,edge,&QWidget::setEnabled);connect(edge,&QComboBox::currentIndexChanged,this,[this,edge,primary]{if(primary&&edge->currentData()!="none")edgeSelect->setCurrentText(edge->currentData().toString());});layout->addWidget(new QLabel("Panel"));layout->addWidget(edge);layout->addStretch();monitorLayout->addWidget(row);monitorEnabled.append(enabled);monitorEdges.append(edge);
+    }
 }

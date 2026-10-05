@@ -15,6 +15,7 @@
 #include <QNetworkRequest>
 #include <memory>
 #include <QTextStream>
+#include <QStandardPaths>
 using namespace Studio;
 QWidget *StudioWindow::aboutPage() {
     auto root=new QWidget;auto v=new QVBoxLayout(root);v->setContentsMargins(0,0,0,0);v->setSpacing(16);
@@ -24,6 +25,7 @@ QWidget *StudioWindow::aboutPage() {
     auto update=new QFrame;update->setObjectName("card");auto uv=new QVBoxLayout(update);
     auto heading=new QLabel("Updates");heading->setObjectName("section");uv->addWidget(heading);
     updateStatus=new QLabel("Check official GitHub releases or the local project build. Updates are installed only when you choose to do so.");updateStatus->setWordWrap(true);uv->addWidget(updateStatus);
+    auto install=new QPushButton("Update now");install->setObjectName("updateNow");uv->addWidget(install);connect(install,&QPushButton::clicked,this,&StudioWindow::updateNow);
     auto check=new QPushButton("Check local release now");uv->addWidget(check);connect(check,&QPushButton::clicked,this,&StudioWindow::checkLocalUpdate);
     auto online=new QPushButton("Check GitHub releases now");uv->addWidget(online);connect(online,&QPushButton::clicked,this,&StudioWindow::checkOnlineUpdate);
     auto releasePage=new QPushButton("Open official GitHub releases");uv->addWidget(releasePage);connect(releasePage,&QPushButton::clicked,this,[]{QDesktopServices::openUrl(QUrl("https://github.com/TridentSpoon/KamaKiriStudio/releases/latest"));});
@@ -36,6 +38,7 @@ QWidget *StudioWindow::aboutPage() {
     auto folder=new QPushButton("Project, documentation and licenses");connect(folder,&QPushButton::clicked,this,[]{QDesktopServices::openUrl(QUrl("https://github.com/TridentSpoon/KamaKiriStudio"));});v->addWidget(folder);v->addStretch();return root;
 }
 void StudioWindow::checkLocalUpdate() {
+    if(updateProcess)return;
     try {
         QString root=QStringLiteral(STUDIO_BUNDLE_DIRECTORY);auto release=readJson(root+"/release.json");
         if(release.isEmpty()){updateStatus->setText("Local release source is unavailable. You can check GitHub releases instead.");return;}
@@ -51,7 +54,7 @@ void StudioWindow::checkLocalUpdate() {
 }
 
 void StudioWindow::checkOnlineUpdate() {
-    if(updateReply)return;
+    if(updateReply||updateProcess)return;
     if(demoMode){updateStatus->setText("Preview mode: online checks are disabled. The installed app checks the official GitHub repository.");return;}
     if(!updateNetwork)updateNetwork=new QNetworkAccessManager(this);
     QNetworkRequest request(QUrl("https://api.github.com/repos/TridentSpoon/KamaKiriStudio/releases/latest"));
@@ -75,6 +78,31 @@ void StudioWindow::checkOnlineUpdate() {
         }
         updateReply=nullptr;reply->deleteLater();
     });
+}
+
+void StudioWindow::updateNow() {
+    if(updateProcess)return;
+    if(busy){updateStatus->setText("Finish or restore your appearance trial before updating.");return;}
+    if(demoMode){updateStatus->setText("Preview mode: updates are not installed.");return;}
+    const QString prefix=QDir::cleanPath(QFileInfo(QCoreApplication::applicationFilePath()).absoluteDir().absoluteFilePath(".."));
+    const QString helper=QDir(prefix).filePath("share/kamakiri-studio/update-local.py");
+    const QString python=QStandardPaths::findExecutable("python3");
+    if(python.isEmpty()||!QFileInfo::exists(helper)){updateStatus->setText("The update helper is unavailable. Reinstall KamaKiriStudio using its local installer.");return;}
+    if(updateReply){updateReply->abort();}
+    updateProcess=new QProcess(this);auto process=updateProcess;
+    process->setProcessChannelMode(QProcess::MergedChannels);
+    auto output=std::make_shared<QByteArray>();
+    auto button=findChild<QPushButton*>("updateNow");if(button)button->setEnabled(false);
+    updateStatus->setText("Checking for an update…");
+    connect(process,&QIODevice::readyRead,this,[this,process,output]{output->append(process->readAll());if(output->size()>8192)output->remove(0,output->size()-8192);updateStatus->setText(QString::fromUtf8(*output).trimmed());});
+    auto complete=[this,process,button,output]{
+        output->append(process->readAll());
+        updateStatus->setText(output->isEmpty()?"The updater could not start. Check that Python is available.":QString::fromUtf8(*output).trimmed());
+        updateProcess=nullptr;if(button)button->setEnabled(true);process->deleteLater();
+    };
+    connect(process,&QProcess::finished,this,[complete](int,QProcess::ExitStatus){complete();});
+    connect(process,&QProcess::errorOccurred,this,[complete](QProcess::ProcessError error){if(error==QProcess::FailedToStart)complete();});
+    process->start(python,{helper,"--current",QApplication::applicationVersion(),"--prefix",QDir(prefix).absolutePath()});
 }
 
 void StudioWindow::reportUpdateCheck() {

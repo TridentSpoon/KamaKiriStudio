@@ -2,3 +2,6 @@
 /bin/kamakiri-studio
 __pycache__/
 *.pyc
+
+# Private local handoff notes
+/HANDOFF.md

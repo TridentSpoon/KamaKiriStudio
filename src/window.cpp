@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 #include "window.h"
+#include "wallpaper_gallery.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QFormLayout>
 #include <QFrame>
+#include <QSignalBlocker>
 #include <QColorDialog>
 #include <QMessageBox>
 #include <QButtonGroup>
@@ -90,9 +92,9 @@ StudioWindow::StudioWindow(bool demo,QWidget *parent):QMainWindow(parent),demoMo
     side->addWidget(label("KAMAKIRI\nSTUDIO","section"));
     side->addWidget(label("A desktop that feels like you.","subtitle"));side->addSpacing(25);
     pages=new QStackedWidget;
-    pages->addWidget(appearancePage());pages->addWidget(desktopPage());pages->addWidget(dashboardPage());pages->addWidget(sessionsPage());pages->addWidget(recoveryPage());pages->addWidget(aboutPage());
+    pages->addWidget(appearancePage());pages->addWidget(recoveryPage());pages->addWidget(aboutPage());
     auto navigation=new QButtonGroup(this);navigation->setExclusive(true);
-    QStringList names{"Appearance","Wallpaper and widgets","Dashboard","Desktop sessions","Recovery and profiles","About and updates"};
+    QStringList names{"Appearance","Recovery and profiles","About and updates"};
     for(int i=0;i<names.size();i++) {
         auto b=new QPushButton(names[i]);b->setCheckable(true);navigation->addButton(b,i);side->addWidget(b);
         connect(b,&QPushButton::clicked,this,[this,i]{pages->setCurrentIndex(i);});
@@ -117,7 +119,7 @@ QWidget *StudioWindow::appearancePage() {
     lookSelect=new QComboBox;lookSelect->addItem("Keep current layout · customize colors","");lookSelect->addItem("Default Plasma · native KDE desktop","plasma");lookSelect->addItem("Kamakiri style · rounded menus and left rail","caelestia");lookSelect->addItem("Fluent 11 · Windows 11 layout","fluent11");lookSelect->addItem("Fluent 10 · Windows 10 layout","fluent10");
     QSettings savedLook;lookSelect->setCurrentIndex(qMax(0,lookSelect->findData(savedLook.value("desktop/look",""))));
     v->addWidget(label("Desktop look","section"));v->addWidget(lookSelect);
-    colorEnabled=new QCheckBox("Include KDE color changes in this trial");colorEnabled->setChecked(true);v->addWidget(colorEnabled);
+    colorEnabled=new QCheckBox("Include KDE color changes in this trial");colorEnabled->setChecked(true);
     themeSelect=new QComboBox;
     themeSelect->addItem("Lavender","caelestia");
     themeSelect->addItem("Graphite and rose","ryoku");
@@ -125,18 +127,29 @@ QWidget *StudioWindow::appearancePage() {
     themeSelect->addItem("Breeze · KDE classic","breeze");
     themeSelect->addItem("From your wallpaper · choose an image first","wallpaper");
     for (const auto &value:omarchyPalettes()) {
-        auto p=value.toObject(); themeSelect->addItem("Omarchy · "+p["name"].toString()+" · "+p["mode"].toString(),p["id"].toString());
+        auto p=value.toObject(); themeSelect->addItem(p["name"].toString(),p["id"].toString());
     }
     v->addWidget(label("Theme and wallpaper","section")); v->addWidget(themeSelect);
-    themeWallpaperEnabled=new QCheckBox("Use the associated Omarchy wallpaper");themeWallpaperEnabled->setChecked(true);v->addWidget(themeWallpaperEnabled);connect(themeWallpaperEnabled,&QCheckBox::toggled,this,[this]{syncThemeWallpaper();});
+    themeWallpaperEnabled=new QCheckBox("Use the associated theme wallpaper");themeWallpaperEnabled->setChecked(true);connect(themeWallpaperEnabled,&QCheckBox::toggled,this,[this]{syncThemeWallpaper();});
     connect(themeSelect,&QComboBox::currentIndexChanged,this,[this]{choosePreset(themeSelect->currentData().toString());});
-    preview=new DesktopPreview;v->addWidget(preview,1);
-    auto options=card();auto form=new QFormLayout(options);form->setContentsMargins(16,12,16,12);form->setVerticalSpacing(10);
+    preview=new DesktopPreview;v->addWidget(preview);
+    v->addWidget(label("Monitors","section"));
+    v->addWidget(label("Switch monitors on to include their wallpaper and panel. KDE colors and window styling apply across the session.","subtitle"));
+    auto monitorRoot=new QWidget;monitorLayout=new QVBoxLayout(monitorRoot);monitorLayout->setContentsMargins(0,0,0,0);v->addWidget(monitorRoot);
+    v->addWidget(label("Wallpaper placement","section"));appearanceScope=new QComboBox;appearanceScope->setObjectName("appearanceWallpaperScope");v->addWidget(appearanceScope);
+    appearanceDisplay=new QComboBox;appearanceDisplay->setObjectName("appearanceWallpaperDisplay");v->addWidget(appearanceDisplay);
+    v->addWidget(label("Theme wallpapers","section"));appearanceGallery=new WallpaperGallery;v->addWidget(appearanceGallery);
+    appearanceGallery->onSelected=[this](const QString &path){if(!busy)selectWallpaper(path,false);};
+    auto attribution=label("As seen in and inspired by Omarchy","subtitle");attribution->setObjectName("themeAttribution");attribution->setAlignment(Qt::AlignRight);v->addWidget(attribution);
+    auto wallpaperApply=new QPushButton("Apply wallpaper");wallpaperApply->setObjectName("applyWallpaper");v->addWidget(wallpaperApply);
+    connect(wallpaperApply,&QPushButton::clicked,this,[this]{if(busy)return;if(wallpaperPath.isEmpty()){error("Choose a wallpaper first.");return;}wallpaperOnly=true;beginTrial();wallpaperOnly=false;});
+    auto advanced=new QPushButton("Advanced settings");advanced->setCheckable(true);v->addWidget(advanced);
+    auto options=card();auto form=new QFormLayout(options);form->setContentsMargins(16,12,16,12);form->setVerticalSpacing(10);form->addRow(colorEnabled);form->addRow(themeWallpaperEnabled);
     accentButton=new QPushButton("Accent · #c4a7ff");
     connect(accentButton,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(accent,this,"Choose an accent");if(c.isValid()){accent=c;colorEnabled->setChecked(true);updatePreview();}});
     light=new QCheckBox("Light surfaces");connect(light,&QCheckBox::toggled,this,&StudioWindow::updatePreview);
     auto paletteRow=new QHBoxLayout;paletteRow->addWidget(accentButton);paletteRow->addWidget(light);paletteRow->addStretch();form->addRow("Palette",paletteRow);
-    panelEnabled=new QCheckBox("Adjust one existing panel");panelEnabled->setChecked(true);
+    panelEnabled=new QCheckBox("Apply panel settings");panelEnabled->setChecked(true);
     connect(panelEnabled,&QCheckBox::toggled,this,[this](bool enabled){panelSelect->setEnabled(enabled);edgeSelect->setEnabled(enabled);height->setEnabled(enabled);floating->setEnabled(enabled);});
     panelSelect=new QComboBox;auto panelRow=new QHBoxLayout;panelRow->addWidget(panelEnabled);panelRow->addWidget(panelSelect,1);form->addRow("Plasma panel",panelRow);
     edgeSelect=new QComboBox;edgeSelect->addItems({"bottom","top","left","right"});
@@ -144,6 +157,7 @@ QWidget *StudioWindow::appearancePage() {
     floating=new QCheckBox("Floating");floating->setChecked(true);
     auto geometry=new QHBoxLayout;geometry->addWidget(edgeSelect);geometry->addWidget(height);geometry->addWidget(floating);geometry->addStretch();form->addRow("Layout",geometry);
     connect(edgeSelect,&QComboBox::currentTextChanged,this,&StudioWindow::updatePreview);
+    connect(edgeSelect,&QComboBox::currentTextChanged,this,[this](const QString &edge){int id=panelSelect->currentData().toJsonObject()["id"].toInt(-1);for(auto choice:monitorEdges)if(id>=0&&choice->property("panelId").toInt()==id)choice->setCurrentIndex(choice->findData(edge));});
     connect(floating,&QCheckBox::toggled,this,&StudioWindow::updatePreview);
     connect(panelSelect,&QComboBox::currentIndexChanged,this,[this]{
         auto p=panelSelect->currentData().toJsonObject();
@@ -161,10 +175,12 @@ QWidget *StudioWindow::appearancePage() {
     auto previews=new QHBoxLayout;
     for(const auto &entry:QList<QStringList>{{"Preview launcher","launcher"},{"Preview dashboard","dashboard"}}){auto button=new QPushButton(entry[0]);previews->addWidget(button);connect(button,&QPushButton::clicked,this,[this,kind=entry[1]]{if(kind=="launcher"&&lookSelect->currentData()=="plasma"){QMessageBox::information(this,"Default Plasma","This look uses KDE’s native Application Launcher, Breeze styling and a bottom panel. The custom Start preview is available for Kamakiri and Fluent looks.");return;}if(kind=="launcher"&&!lookSelect->currentData().toString().isEmpty()){auto q=new QQuickWidget; q->setAttribute(Qt::WA_DeleteOnClose);q->setResizeMode(QQuickWidget::SizeRootObjectToView);q->setSource(QUrl("qrc:/start/StartMenu.qml"));if(auto root=q->rootObject()){root->setProperty("look",lookSelect->currentData());root->setProperty("appearance",popupMode->currentData());root->setProperty("preview",true);}q->resize(lookSelect->currentData()=="fluent10"?760:640,650);q->setWindowTitle("Start menu preview");q->show();}else {auto popup=new StudioPopup(kind=="launcher"?StudioPopup::Launcher:StudioPopup::Dashboard,demoMode,this,popupStyle->currentData().toString(),popupMode->currentData().toString());popup->setAttribute(Qt::WA_DeleteOnClose);popup->show();}});}
     form->addRow("Try popup look",previews);
-    connect(presetLayout,&QComboBox::currentIndexChanged,this,[this](int i){if(i==0)return;panelEnabled->setChecked(true);edgeSelect->setCurrentText(i==1?"left":"bottom");height->setValue(i==1?40:48);floating->setChecked(true);panelActions->setChecked(true);colorEnabled->setChecked(false);updatePreview();});
+    connect(presetLayout,&QComboBox::currentIndexChanged,this,[this](int i){if(i==0)return;panelEnabled->setChecked(true);edgeSelect->setCurrentText(i==1?"left":"bottom");height->setValue(i==1?40:48);floating->setChecked(true);panelActions->setChecked(lookSelect->currentData()=="caelestia");colorEnabled->setChecked(false);updatePreview();});
     connect(colorEnabled,&QCheckBox::toggled,this,&StudioWindow::updatePreview);
-    v->addWidget(options);
+    form->addRow(desktopPage());
+    v->addWidget(options);options->hide();connect(advanced,&QPushButton::toggled,options,&QWidget::setVisible);
     notice=label("Select a style, then try it on your desktop.","subtitle");notice->setMinimumHeight(34);v->addWidget(notice);
+    restoreBlocked=new QPushButton("Repair and restore previous settings");restoreBlocked->hide();v->addWidget(restoreBlocked);connect(restoreBlocked,&QPushButton::clicked,this,[this]{pages->setCurrentIndex(1);recoverPending();});
     auto bottom=new QHBoxLayout;
     bottom->addWidget(label("Widgets, shortcuts, and authentication stay yours.","subtitle"),1);
     apply=new QPushButton(demoMode?"Try confirmation flow":"Apply & try");apply->setObjectName("primary");connect(apply,&QPushButton::clicked,this,&StudioWindow::beginTrial);bottom->addWidget(apply);v->addLayout(bottom);
@@ -172,27 +188,12 @@ QWidget *StudioWindow::appearancePage() {
     if(!lookSelect->currentData().toString().isEmpty())chooseLook();
     return scroll;
 }
-QWidget *StudioWindow::sessionsPage() {
-    auto w=new QWidget;auto v=new QVBoxLayout(w);v->setContentsMargins(0,0,0,0);v->setSpacing(15);
-    v->addWidget(label("A place for every desktop.","hero"));
-    v->addWidget(label("Choose an installed desktop environment or window manager session.","subtitle"));
-    auto info=card();auto iv=new QVBoxLayout(info);
-    iv->addWidget(label("Sessions switch at the login screen","section"));
-    iv->addWidget(label("Save your work first. This opens KDE’s logout confirmation. At the login screen, choose the selected session and sign in. Plasma remains available for your next login.","subtitle"));
-    iv->addWidget(label("Wayland window managers run as separate sessions; they cannot replace KWin inside a running Plasma Wayland session.","subtitle"));v->addWidget(info);
-    sessionList=new QListWidget;v->addWidget(sessionList,1);
-    connect(sessionList,&QListWidget::currentRowChanged,this,[this]{auto item=sessionList->currentItem();switchButton->setEnabled(!demoMode&&!busy&&item&&item->data(Qt::UserRole).toJsonObject()["available"].toBool());});
-    auto actions=new QHBoxLayout;auto refresh=new QPushButton("Refresh installed sessions");connect(refresh,&QPushButton::clicked,this,&StudioWindow::refreshInventory);actions->addWidget(refresh);actions->addStretch();
-    switchButton=new QPushButton("Log out to switch…");switchButton->setObjectName("primary");switchButton->setEnabled(false);connect(switchButton,&QPushButton::clicked,this,&StudioWindow::logoutToSelectedSession);actions->addWidget(switchButton);v->addLayout(actions);
-    v->addWidget(label("Appearance rollback applies to this Plasma session. A session change uses the display manager’s normal login process.","subtitle"));
-    return w;
-}
 QWidget *StudioWindow::recoveryPage() {
     auto w=new QWidget;auto v=new QVBoxLayout(w);v->setContentsMargins(0,0,0,0);v->setSpacing(16);
     v->addWidget(label("Experiment with a way back.","hero"));
     auto explanation=card();auto e=new QVBoxLayout(explanation);
     e->addWidget(label("Keep these changes?","section"));
-    e->addWidget(label("No visible countdown. If there is no keyboard, pointer, or touch input during the first 15 seconds, your previous settings return. Once input is detected, the timeout is removed and only your Yes or No decides.","subtitle"));
+    e->addWidget(label("A 15-second countdown restores your previous settings if there is no keyboard, pointer, or touch input. Once input is detected, the timeout is removed and only your Yes or No decides.","subtitle"));
     e->addWidget(label("You can test other windows while the confirmation stays open. Closing or crashing the manager restores an undecided trial.","subtitle"));v->addWidget(explanation);
     auto profiles=card();auto pl=new QVBoxLayout(profiles);pl->addWidget(label("Portable appearance profiles","section"));
     pl->addWidget(label("Save your choices as data. Importing a profile only updates the preview; use Apply & try to test it.","subtitle"));
@@ -202,6 +203,7 @@ QWidget *StudioWindow::recoveryPage() {
         if(busy){error("Finish the current trial before importing a profile.");return;}
         auto path=QFileDialog::getOpenFileName(this,"Import appearance",QString(),"JSON profile (*.json)");if(path.isEmpty())return;
         try {auto r=readJson(path);if(r["format"]!="kamakiri-studio-v1")throw std::runtime_error("This is not a KamaKiriStudio profile.");validateRequest(r);
+            wallpaperScope->setCurrentIndex(qMax(0,wallpaperScope->findData(r["wallpaperScope"].toString("single"))));
             wallpaperPath=r["wallpaperPath"].toString();selectedWallpaper=wallpaperPath.isEmpty()?QImage():loadWallpaper(wallpaperPath);derivedPalette=wallpaperPath.isEmpty()?QJsonObject():wallpaperPalette(wallpaperPath);wallpaperEnabled->setEnabled(!wallpaperPath.isEmpty());wallpaperEnabled->setChecked(r["changeWallpaper"].toBool());
             if(!wallpaperPath.isEmpty())wallpaperPreview->setPixmap(QPixmap::fromImage(loadWallpaper(wallpaperPath)).scaled(700,210,Qt::KeepAspectRatio,Qt::SmoothTransformation));
             for(auto choice:widgetChoices)choice->setChecked(choice->isEnabled()&&r["widgets"].toArray().contains(choice->property("plugin").toString()));
@@ -212,7 +214,8 @@ QWidget *StudioWindow::recoveryPage() {
             notice->setText("Profile loaded into the preview. No desktop changes applied.");
         }catch(const std::exception &ex){error(ex.what());}
     });
-    auto recovery=new QPushButton("Check for unfinished trials");connect(recovery,&QPushButton::clicked,this,&StudioWindow::recoverPending);v->addWidget(recovery);
+    recoveryStatus=label("Restore a trial that was interrupted or could not finish. Your saved backup is kept if restoration fails.","subtitle");v->addWidget(recoveryStatus);
+    auto recovery=new QPushButton("Repair and restore previous settings");connect(recovery,&QPushButton::clicked,this,&StudioWindow::recoverPending);v->addWidget(recovery);
     v->addWidget(label("Snapshots are stored locally in a private folder. This app does not download themes, execute profile commands, store passwords, or change your login screen.","subtitle"));
     v->addStretch();return w;
 }
@@ -224,23 +227,19 @@ void StudioWindow::refreshInventory() {
     for(const auto &item:inventory["panels"].toArray()) {auto p=item.toObject();panelSelect->addItem(QString("Panel %1 · %2").arg(p["id"].toInt()).arg(p["location"].toString()),p);}
     if(panelSelect->count()==0) {panelEnabled->setChecked(false);panelEnabled->setEnabled(false);}
     else panelEnabled->setEnabled(true);
-    sessionList->clear();
-    for(const auto &item:inventory["sessions"].toArray()) {
-        auto s=item.toObject();auto li=new QListWidgetItem(s["name"].toString()+"  ·  "+s["type"].toString()+(s["available"].toBool()?"":"  ·  executable missing"),sessionList);
-        li->setData(Qt::UserRole,s);
-        if(!s["available"].toBool())li->setFlags(li->flags()&~Qt::ItemIsEnabled);
-    }
-    if(sessionList->count()>0)sessionList->setCurrentRow(0);
     apply->setEnabled(demoMode||(inventory["plasmaAvailable"].toBool()&&inventory["globalInputReady"].toBool()&&!inventory["colorTool"].toString().isEmpty()));
     refreshDesktopTools();
     if(!demoMode&&!apply->isEnabled())notice->setText("Desktop integration unavailable: "+inventory["error"].toString());
     updatePreview();
 }
 void StudioWindow::choosePreset(const QString &id) {
-    if(id=="wallpaper"&&wallpaperPath.isEmpty()){themeSelect->setCurrentIndex(themeSelect->findData(preset));notice->setText("Choose an image in Wallpaper and widgets first.");return;}
+    if(id=="wallpaper"&&wallpaperPath.isEmpty()){themeSelect->setCurrentIndex(themeSelect->findData(preset));notice->setText("Choose a local image in Advanced settings first.");return;}
+    if(auto credit=findChild<QLabel*>("themeAttribution"))credit->setVisible(id.startsWith("omarchy-"));
+    bool changed=preset!=id;
     preset=id;
+    if(changed&&!associatedWallpaper(id).isEmpty()){QSignalBlocker block(themeWallpaperEnabled);themeWallpaperEnabled->setChecked(true);}
     if(colorEnabled)colorEnabled->setChecked(true);
-    themeSelect->setCurrentIndex(themeSelect->findData(id));
+    {QSignalBlocker block(themeSelect);themeSelect->setCurrentIndex(themeSelect->findData(id));}
     auto palette=desktopPalette(id,"desktop");
     if(id=="wallpaper")palette=derivedPalette;
     QStringList ids{"caelestia","ryoku","breeze"};
@@ -250,6 +249,7 @@ void StudioWindow::choosePreset(const QString &id) {
     light->setEnabled(palette.isEmpty());
     if (!palette.isEmpty()) light->setChecked(palette["mode"]=="light");
     syncThemeWallpaper();
+    refreshWallpaperGallery();
     updatePreview();
 }
 void StudioWindow::updatePreview() {
@@ -272,15 +272,33 @@ QJsonObject StudioWindow::desired() const {
     auto p=panelSelect->currentData().toJsonObject();
     p["location"]=edgeSelect->currentText();p["height"]=height->value();p["floating"]=floating->isChecked();
     QJsonArray widgets;for(auto choice:widgetChoices)if(choice->isEnabled()&&choice->isChecked())widgets.append(choice->property("plugin").toString());
-    return {{"desktopLook",lookSelect->currentData().toString()},{"preset",preset},{"accent",accent.name()},{"light",light->isChecked()},{"changePanel",panelEnabled->isChecked()&&panelSelect->count()>0},{"panel",p},{"wallpaperPath",wallpaperPath},{"changeWallpaper",wallpaperEnabled->isChecked()&&!wallpaperPath.isEmpty()},{"desktopId",desktopSelect->currentData().toInt()},{"widgets",widgets},{"changeColors",colorEnabled->isChecked()},{"panelPopupActions",panelActions->isChecked()},{"changePopupLook",true},{"popupStyle",popupStyle->currentData().toString()},{"popupMode",popupMode->currentData().toString()}};
+    QJsonArray wallpaperDisplays,panelChoices,removedPanels,createdPanels;
+    for(int i=0;i<monitorEnabled.size();i++)if(monitorEnabled[i]->isChecked()){
+        wallpaperDisplays.append(monitorEnabled[i]->property("desktopId").toInt());int id=monitorEdges[i]->property("panelId").toInt();QString edge=monitorEdges[i]->currentData().toString();
+        if(edge=="none"){for(const auto &v:inventory["panels"].toArray())if(v.toObject()["screen"].toInt(0)==monitorEnabled[i]->property("screen").toInt())removedPanels.append(v.toObject()["id"]);continue;}
+        if(id<0){createdPanels.append(QJsonObject{{"screen",monitorEnabled[i]->property("screen").toInt()},{"location",edge},{"height",height->value()},{"floating",floating->isChecked()}});continue;}
+        for(const auto &v:inventory["panels"].toArray()){auto panel=v.toObject();if(panel["id"].toInt()==id){panel["location"]=edge;panel["height"]=height->value();panel["floating"]=floating->isChecked();panelChoices.append(panel);}}
+    }
+    if(!monitorEnabled.isEmpty()&&wallpaperDisplays.isEmpty())throw std::runtime_error("Switch on at least one monitor before applying.");
+    auto result=QJsonObject{{"wallpaperScope",wallpaperScope?wallpaperScope->currentData().toString():"single"},{"desktopLook",lookSelect->currentData().toString()},{"preset",preset},{"accent",accent.name()},{"light",light->isChecked()},{"changePanel",panelEnabled->isChecked()&&panelSelect->count()>0},{"panel",p},{"wallpaperPath",wallpaperPath},{"changeWallpaper",wallpaperEnabled->isChecked()&&!wallpaperPath.isEmpty()},{"desktopId",desktopSelect->currentData().toInt()},{"widgets",widgets},{"changeColors",colorEnabled->isChecked()},{"panelPopupActions",panelActions->isChecked()&&lookSelect->currentData()=="caelestia"},{"changePopupLook",true},{"popupStyle",popupStyle->currentData().toString()},{"popupMode",popupMode->currentData().toString()}};
+    if(!monitorEnabled.isEmpty()){
+        if(!wallpaperDisplays.contains(result["desktopId"]))result["widgets"]=QJsonArray{};
+        result["wallpaperDesktopIds"]=wallpaperDisplays;result["panels"]=panelChoices;result["removePanelIds"]=removedPanels;result["createPanels"]=createdPanels;
+        result["changePanel"]=panelEnabled->isChecked()&&(!panelChoices.isEmpty()||!removedPanels.isEmpty()||!createdPanels.isEmpty());
+        if(!panelChoices.isEmpty())result["panel"]=panelChoices.first();
+        if(!result["changePanel"].toBool()){result["desktopLook"]="";result["panelPopupActions"]=false;}
+    }
+    if(wallpaperOnly){result["changeWallpaper"]=true;result["changeColors"]=false;result["changePanel"]=false;result["panels"]=QJsonArray{};result["removePanelIds"]=QJsonArray{};result["createPanels"]=QJsonArray{};result["desktopLook"]="";result["changePopupLook"]=false;result["panelPopupActions"]=false;result["widgets"]=QJsonArray{};}
+    return result;
 }
 void StudioWindow::beginTrial() {
+    if(updateProcess){error("Wait for the app update to finish before starting an appearance trial.");return;}
     if(busy)return;
     try {
         QDir oldTrials(stateRoot());
         for(const auto &old:oldTrials.entryList(QDir::Dirs|QDir::NoDotAndDotDot)) {
             if(unfinished(readJson(oldTrials.filePath(old)+"/status.json")["state"].toString()))
-                throw std::runtime_error("An unfinished trial must be restored before starting another. Use Recovery and profiles to check it.");
+                throw std::runtime_error("An unfinished trial must be restored before starting another. Click Repair and restore previous settings to retry. Your backup has been preserved.");
         }
         auto r=desired();validateRequest(r);
         QString id=QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -290,7 +308,7 @@ void StudioWindow::beginTrial() {
         r["demo"]=demoMode;
         writeJson(transaction+"/request.json",r);
         busy=true;inputSeen=false;decision.clear();heartbeat=0;
-        apply->setEnabled(false);switchButton->setEnabled(false);writeCommand();
+        apply->setEnabled(false);writeCommand();
         QStringList args{"--worker",id};if(demoMode)args<<"--demo";
         QProcess worker;worker.setProgram(QCoreApplication::applicationFilePath());worker.setArguments(args);
         worker.setStandardOutputFile(transaction+"/worker.log");worker.setStandardErrorFile(transaction+"/worker.log",QIODevice::Append);
@@ -318,8 +336,9 @@ void StudioWindow::pollTrial() {
         }
         if(s=="pending") {
             if(!confirmation)showConfirmation();
-            confirmationText->setText(status["message"].toString());
-            if(status["interacted"].toBool())trialExplanation->setText("Timeout removed. Choose Yes or No when you are ready.");
+            confirmationText->setText(decision.isEmpty()?status["message"].toString():decision=="yes"?"Saving your choice…":"Restoring your previous settings…");
+            if(decision.isEmpty()&&status["interacted"].toBool())trialExplanation->setText("Timeout removed. Choose Yes or No when you are ready.");
+            else if(decision.isEmpty())trialExplanation->setText(QString("Restoring in %1 seconds unless you interact. Your first input removes the timeout.").arg(status["remainingSeconds"].toInt(15)));
         }
         if(s=="kept"||s=="reverted"||s=="failed"||s=="recovery-needed") {
             busy=false;notice->setText(status["message"].toString());
@@ -347,7 +366,11 @@ void StudioWindow::showConfirmation() {
 void StudioWindow::decide(const QString &v) {
     if(!busy)return;
     decision=v;writeCommand();
-    if(confirmation)confirmation->setEnabled(false);
+    if(confirmation){
+        for(auto button:confirmation->findChildren<QPushButton*>())button->setEnabled(false);
+        confirmationText->setText(v=="yes"?"Saving your choice…":"Restoring your previous settings…");
+        trialExplanation->setText("Waiting for the recovery worker to finish.");
+    }
 }
 bool StudioWindow::eventFilter(QObject *,QEvent *e) {
     if(busy&&confirmation&&decision.isEmpty()&&e->spontaneous()) {
@@ -360,14 +383,15 @@ bool StudioWindow::eventFilter(QObject *,QEvent *e) {
     return false;
 }
 void StudioWindow::closeEvent(QCloseEvent *e) {
+    if(updateProcess){pages->setCurrentIndex(2);updateStatus->setText("An update is in progress. Wait for it to finish before closing.");e->ignore();return;}
     if(busy){closing=true;decide("no");e->ignore();notice->setText("Restoring before closing…");}
-    else e->accept();
+    else {e->accept();QCoreApplication::quit();}
 }
 void StudioWindow::error(const QString &s) {QMessageBox::warning(this,"KamaKiriStudio",s);}
 void StudioWindow::recoverPending() {
     if(busy)return;
     try {
-        bool blocked=false;
+        bool blocked=false, restoredAny=false;
         QDir root(stateRoot());
         for(const auto &id:root.entryList(QDir::Dirs|QDir::NoDotAndDotDot|QDir::NoSymLinks)) {
             if(!QRegularExpression("^[a-f0-9-]{36}$").match(id).hasMatch())continue;
@@ -380,29 +404,25 @@ void StudioWindow::recoverPending() {
             }
             bool simulated=readJson(dir+"/request.json")["demo"].toBool();
             if(QFileInfo::exists(dir+"/snapshot.json")) {
-                recover(dir,simulated);notice->setText("An unfinished trial was restored from its saved snapshot.");
+                recover(dir,simulated);restoredAny=true;notice->setText("An unfinished trial was restored from its saved snapshot.");
             } else {
                 writeJson(dir+"/status.json",{{"state","failed"},{"message","An interrupted trial stopped before changing any settings."}});
                 notice->setText("An interrupted trial stopped before changing any settings.");
             }
         }
+        if(recoveryStatus)recoveryStatus->setText(blocked||restoredAny?notice->text():"No unfinished trials. Your desktop is ready for a new trial.");
+        if(restoreBlocked)restoreBlocked->setVisible(blocked);
         apply->setEnabled(!blocked&&(demoMode||(inventory["plasmaAvailable"].toBool()&&inventory["globalInputReady"].toBool()&&!inventory["colorTool"].toString().isEmpty())));
-    }catch(const std::exception &ex){apply->setEnabled(false);error(QString::fromUtf8(ex.what()));}
-}
-void StudioWindow::logoutToSelectedSession() {
-    if(busy||demoMode)return;
-    auto item=sessionList->currentItem();if(!item)return;
-    auto s=item->data(Qt::UserRole).toJsonObject();
-    if(!s["available"].toBool())return;
-    auto answer=QMessageBox::question(this,"Switch desktop session", "Save your work first.\n\nAfter logging out, select “"+s["name"].toString()+"” in the login screen’s session menu.\n\nOpen KDE’s logout confirmation now?",QMessageBox::Yes|QMessageBox::No,QMessageBox::No);
-    if(answer!=QMessageBox::Yes)return;
-    auto msg=QDBusMessage::createMethodCall("org.kde.LogoutPrompt","/LogoutPrompt","org.kde.LogoutPrompt","promptLogout");
-    auto reply=QDBusConnection::sessionBus().call(msg,QDBus::Block,5000);
-    if(reply.type()==QDBusMessage::ErrorMessage)error("KDE could not open the logout screen: "+reply.errorMessage());
+        desktopApply->setEnabled(apply->isEnabled()&&desktopSelect->count()>0);
+        apply->setToolTip(apply->isEnabled()?QString():notice->text());desktopApply->setToolTip(apply->toolTip());
+    }catch(const std::exception &ex){
+        const QString message="Apply is blocked: an unfinished trial could not be restored. "+QString::fromUtf8(ex.what())+" Click Repair and restore previous settings to retry. Your backup has been preserved.";
+        apply->setEnabled(false);desktopApply->setEnabled(false);notice->setText(message);if(recoveryStatus)recoveryStatus->setText(message);if(restoreBlocked)restoreBlocked->show();apply->setToolTip(message);desktopApply->setToolTip(message);error(message);
+    }
 }
 void StudioWindow::showPreviewPage(const QString &name) {
-    QStringList names{"appearance","desktop","dashboard","sessions","recovery","about"};
-    int i=names.indexOf(name);if(i>=0)pages->setCurrentIndex(i);if(name=="about")checkLocalUpdate();
+    QStringList names{"appearance","recovery","about"};
+    int i=names.indexOf(name=="desktop"?"appearance":name);if(i>=0)pages->setCurrentIndex(i);if(name=="about")checkLocalUpdate();
 }
 void StudioWindow::setDemoWallpaper(const QString &path) {
     if(!demoMode)throw std::runtime_error("Demo wallpaper checks require preview mode.");
@@ -431,13 +451,13 @@ void StudioWindow::runUiCheck(const QString &path) {
 }
 
 void StudioWindow::chooseLook() {
-    auto look=lookSelect->currentData().toString();if(look.isEmpty())return;
+    auto look=lookSelect->currentData().toString();panelActions->setEnabled(look=="caelestia");if(look.isEmpty()){panelActions->setChecked(false);return;}
     // Prefer an existing panel at the requested edge instead of creating stacked taskbars.
     QString targetEdge=look=="caelestia"?"left":"bottom";
     for(int i=0;i<panelSelect->count();i++)if(panelSelect->itemData(i).toJsonObject()["location"]==targetEdge){panelSelect->setCurrentIndex(i);break;}
     if(look=="plasma"){choosePreset("breeze");light->setChecked(true);popupMode->setCurrentIndex(popupMode->findData("desktop"));}
     panelEnabled->setChecked(true);edgeSelect->setCurrentText(look=="caelestia"?"left":"bottom");height->setValue(look=="caelestia"?48:(look=="fluent11"||look=="plasma")?48:40);floating->setChecked(look=="caelestia"||look=="plasma");
-    panelActions->setChecked(false);popupStyle->setCurrentIndex(popupStyle->findData(look=="caelestia"?"rounded":"fluent"));colorEnabled->setChecked(true);updatePreview();
+    panelActions->setEnabled(look=="caelestia");panelActions->setChecked(look=="caelestia");popupStyle->setCurrentIndex(popupStyle->findData(look=="caelestia"?"rounded":"fluent"));colorEnabled->setChecked(true);updatePreview();
 }
 void StudioWindow::syncThemeWallpaper() {
     if(!wallpaperPreview||!themeWallpaperEnabled->isChecked())return;

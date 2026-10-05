@@ -3,18 +3,49 @@
 #include <QJsonDocument>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QPainter>
 #include <QUrl>
 #include <QSet>
 #include <QStandardPaths>
 #include <QRegularExpression>
 #include <stdexcept>
+#include <QGuiApplication>
+#include <QScreen>
 namespace Studio {
 static void bad(const QString &s) {throw std::runtime_error(s.toStdString());}
 QJsonObject desktopInventory() {
-    auto text=plasmaScript(R"JS(print(JSON.stringify({types:knownWidgetTypes,panelWidgets:panels().map(function(d){return {id:d.id,widgets:d.widgets().map(function(w){w.currentConfigGroup=['General'];return {id:w.id,type:w.type,owner:w.readConfig('KamaKiriTransaction','')};})};}),desktops:desktops().map(function(d){d.currentConfigGroup=['Wallpaper',d.wallpaperPlugin,'General'];return {id:d.id,screen:d.screen,plugin:d.wallpaperPlugin,image:d.readConfig('Image',''),widgets:d.widgets().map(function(w){w.currentConfigGroup=['General'];return {id:w.id,type:w.type,owner:w.readConfig('KamaKiriTransaction','')};})};})})))JS");
+    auto text=plasmaScript(R"JS(print(JSON.stringify({types:knownWidgetTypes,panelWidgets:panels().map(function(d){return {id:d.id,widgets:d.widgets().map(function(w){w.currentConfigGroup=['General'];return {id:w.id,type:w.type,owner:w.readConfig('KamaKiriTransaction','')};})};}),desktops:desktops().map(function(d){d.currentConfigGroup=['Wallpaper',d.wallpaperPlugin,'General'];var g=d.screen>=0?screenGeometry(d.screen):null;var active=desktopsForActivity(currentActivity()).some(function(a){return a.id===d.id;});return {active:active,id:d.id,screen:d.screen,geometry:g?{x:g.x,y:g.y,width:g.width,height:g.height}:null,activity:d.activity,plugin:d.wallpaperPlugin,image:d.readConfig('Image',''),widgets:d.widgets().map(function(w){w.currentConfigGroup=['General'];return {id:w.id,type:w.type,owner:w.readConfig('KamaKiriTransaction','')};})};})})))JS");
     auto doc=QJsonDocument::fromJson(text.trimmed().toUtf8());
     if(!doc.isObject()) bad("Cannot read desktop wallpaper and widgets.");
     return doc.object();
+}
+QJsonArray wallpaperTargets(const QJsonArray &desktops,int selected,const QString &scope,const QJsonArray &included) {
+    if(!QStringList{"single","all","span"}.contains(scope))bad("Unknown wallpaper display mode.");
+    QJsonObject chosen;for(const auto &v:desktops)if(v.toObject()["id"].toInt(-1)==selected)chosen=v.toObject();
+    if(!included.isEmpty()&&!included.contains(selected)){chosen={};for(const auto &v:desktops)if(included.contains(v.toObject()["id"])) {chosen=v.toObject();break;}}
+    if(chosen.isEmpty()||chosen["screen"].toInt(-1)<0||!chosen["active"].toBool(true))bad("Selected wallpaper display is unavailable.");
+    QJsonArray result;QSet<int> screens;
+    for(const auto &v:desktops){auto d=v.toObject();if(!included.isEmpty()&&!included.contains(d["id"]))continue;if(d["screen"].toInt(-1)<0||!d["active"].toBool(true)||d["activity"]!=chosen["activity"]||(scope=="single"&&d["id"]!=chosen["id"]))continue;
+        if(d["plugin"]!="org.kde.image")bad("Every selected display must use KDE's Image wallpaper type.");
+        if(screens.contains(d["screen"].toInt()))continue;
+        screens.insert(d["screen"].toInt());result.append(d);}
+    if(result.isEmpty())bad("No connected wallpaper displays were found.");
+    return result;
+}
+int primaryDesktopScreen(const QJsonArray &desktops) {
+    if(auto screen=QGuiApplication::primaryScreen())for(const auto &v:desktops){auto d=v.toObject(),g=d["geometry"].toObject();if(QRect(g["x"].toInt(),g["y"].toInt(),g["width"].toInt(),g["height"].toInt())==screen->geometry())return d["screen"].toInt();}
+    return 0;
+}
+QList<QImage> spanWallpaper(const QImage &image,const QList<QRect> &screens) {
+    if(image.isNull()||screens.isEmpty())bad("Cannot span an empty wallpaper or display layout.");
+    QRect canvas;
+    for(const auto &r:screens){if(r.width()<=0||r.height()<=0)bad("Display geometry is invalid.");canvas=canvas.united(r);}
+    if(qint64(canvas.width())*canvas.height()>64000000||canvas.width()>32000||canvas.height()>32000)bad("Combined display layout exceeds the wallpaper memory limit.");
+    qint64 pixels=0;for(const auto &r:screens)pixels+=qint64(r.width())*r.height();if(pixels>64000000)bad("Split wallpaper images exceed the memory limit.");
+    double scale=qMax(double(canvas.width())/image.width(),double(canvas.height())/image.height());QSizeF size(image.width()*scale,image.height()*scale);
+    QRectF target(QPointF((canvas.width()-size.width())/2.,(canvas.height()-size.height())/2.),size);QList<QImage> crops;
+    for(const auto &r:screens){QImage crop(r.size(),QImage::Format_RGB32);if(crop.isNull())bad("Cannot allocate a split wallpaper image.");crop.fill(Qt::black);QPainter painter(&crop);painter.setRenderHint(QPainter::SmoothPixmapTransform);painter.drawImage(target.translated(canvas.topLeft()-r.topLeft()),image);painter.end();crops.append(crop);}
+    return crops;
 }
 QStringList safeWidgetTypes() {return {"org.kde.plasma.digitalclock","org.kde.plasma.mediacontroller","org.kde.plasma.systemmonitor.cpu","org.kde.plasma.systemmonitor.memory","org.kde.plasma.kickerdash","org.kde.plasma.calendar","org.kde.plasma.volume","org.kde.plasma.networkmanagement"};}
 QImage loadWallpaper(const QString &path) {
