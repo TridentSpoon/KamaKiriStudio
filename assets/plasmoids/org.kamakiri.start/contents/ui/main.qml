@@ -20,7 +20,7 @@ PlasmoidItem {
         interval: 0
         onTriggered: {
             if (!root.expanded || root.Plasmoid.configuration.look !== "fluent11") return;
-            const popup = start.Window.window;
+            const popup = root.fullRepresentationItem ? root.fullRepresentationItem.Window.window : null;
             if (popup && popup.visualParent !== undefined) popup.visualParent = centeredPopupAnchor;
         }
     }
