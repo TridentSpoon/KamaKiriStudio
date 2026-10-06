@@ -25,6 +25,8 @@ QJsonObject snapshotLook(int panelId,bool full=false);
 bool panelMatchesState(const QJsonObject &actual,const QJsonObject &expected);
 QJsonArray trialPanels(const QJsonObject &request);
 int primaryDesktopScreen(const QJsonArray &desktops);
+QString monitorDisplayName(const QString &manufacturer,const QString &model,const QString &connector);
+QString primaryMonitorArgument(const QJsonArray &outputs,const QString &connector);
 QString applyLookScript(int id,const QString &look,const QString &mode,const QString &owner);
 QString restoreLookScript(const QJsonObject &saved,const QString &owner);
 void applyLook(const QJsonObject &request,const QString &owner);

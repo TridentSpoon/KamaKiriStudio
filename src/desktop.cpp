@@ -36,6 +36,22 @@ int primaryDesktopScreen(const QJsonArray &desktops) {
     if(auto screen=QGuiApplication::primaryScreen())for(const auto &v:desktops){auto d=v.toObject(),g=d["geometry"].toObject();if(QRect(g["x"].toInt(),g["y"].toInt(),g["width"].toInt(),g["height"].toInt())==screen->geometry())return d["screen"].toInt();}
     return 0;
 }
+QString monitorDisplayName(const QString &manufacturer,const QString &model,const QString &connector) {
+    QString make=manufacturer.simplified(),name=model.simplified();
+    if(name.isEmpty())name=make;
+    else if(!make.isEmpty()&&!name.startsWith(make,Qt::CaseInsensitive))name=make+" "+name;
+    if(name.isEmpty())return connector.isEmpty()?QString("Unknown display"):connector;
+    return connector.isEmpty()?name:name+" · "+connector;
+}
+QString primaryMonitorArgument(const QJsonArray &outputs,const QString &connector) {
+    if(connector.isEmpty())bad("This monitor could not be matched to a connected KDE output.");
+    for(const auto &entry:outputs){auto output=entry.toObject();if(output["name"].toString()!=connector)continue;
+        if(!output["connected"].toBool()||!output["enabled"].toBool())bad("The selected monitor is disconnected or disabled. Refresh displays and try again.");
+        int id=output["id"].toInt(-1);if(id<1||output["id"].toDouble()!=id)bad("KDE returned an invalid monitor identifier.");
+        return QString("output.%1.priority.1").arg(id);
+    }
+    bad("The selected monitor is no longer available. Refresh displays and try again.");return {};
+}
 QList<QImage> spanWallpaper(const QImage &image,const QList<QRect> &screens) {
     if(image.isNull()||screens.isEmpty())bad("Cannot span an empty wallpaper or display layout.");
     QRect canvas;

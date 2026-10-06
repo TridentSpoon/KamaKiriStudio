@@ -8,6 +8,7 @@ A native KDE desktop studio that keeps Plasma and KWin as its base. Inspired by 
 
 - Complete KDE color palettes, editable accents and panel placement, height and floating controls.
 - A honeycomb gallery with 72 bundled theme wallpapers, excluding logo-only variants, credited “As seen in Omarchy”, and a local wallpaper picker with optional matching colors.
+- Monitor make/model and connector names, native KDE monitor identification and per-monitor primary-display controls. Primary changes apply immediately through KDE; appearance trials must finish first.
 - Wallpaper placement on one display, the same image on the enabled displays, or one image spanning the KDE display arrangement.
 - An installed KDE widget collection: clock, media player, CPU, memory, application dashboard, calendar, volume and network. Existing widgets are preserved and duplicate types are skipped.
 - Data-only profile import and export. Import previews choices before applying them; desktop and panel targets stay local to this machine.
