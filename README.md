@@ -21,6 +21,18 @@ The app launcher filters installed application metadata and opens the selected a
 
 ## Get started
 
+Already using **KDE Plasma 6**? Download and extract the source archive, open a terminal in that folder, and run:
+
+```sh
+./install.sh
+```
+
+The guided installer handles dependencies on Debian/Ubuntu, Fedora/RHEL-family and Arch-family systems, builds for your machine, and adds the app to your Applications menu. It asks before installing; only the package manager uses administrator access. Desktop appearance stays unchanged. KDE 6 development packages must exist in your enabled repositories; older releases with only KDE 5 are unsupported. Arch dependency installation includes a full system upgrade.
+
+Use `./install.sh --dry-run` to inspect the plan or `./install.sh --check` to check compatibility. See [the installation guide](docs/INSTALLATION.md). This development snapshot remains experimental.
+
+### Manual build
+
 Source checkouts must be built first. Release bundles include a locally built x86-64 binary; it is linked against Qt/KDE system libraries, not a universal AppImage. Other distributions should build against their own installed packages.
 
 ```sh
@@ -33,7 +45,7 @@ python3 install-local.py
 
 Open **KamaKiriStudio** from the Applications menu, or run `./launch.sh`. Use `./launch.sh --demo` for a preview that leaves appearance unchanged.
 
-Requires C++17, CMake, Qt6 Widgets/DBus/Network/Test/QuickWidgets, KDE Frameworks 6 Config, IdleTime, Service, KIO and WindowSystem, libwayland-client development files, pkg-config and wayland-scanner. Runtime appearance changes require Plasma 6, `plasma-apply-colorscheme` and installed Breeze schemes. Installation does not install dependencies or request root.
+Requires C++17, CMake, Qt6 Widgets/DBus/Network/Test/QuickWidgets, KDE Frameworks 6 Config, IdleTime, Service, KIO and WindowSystem, libwayland-client development files, pkg-config and wayland-scanner. Runtime appearance changes require Plasma 6, `plasma-apply-colorscheme` and installed Breeze schemes. The manual local installer does not install dependencies or request root.
 
 ## Try changes and recover
 
