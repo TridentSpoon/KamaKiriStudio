@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <QGuiApplication>
 #include <QScreen>
+#include <QProcess>
 namespace Studio {
 static void bad(const QString &s) {throw std::runtime_error(s.toStdString());}
 QJsonObject desktopInventory() {
@@ -32,9 +33,35 @@ QJsonArray wallpaperTargets(const QJsonArray &desktops,int selected,const QStrin
     if(result.isEmpty())bad("No connected wallpaper displays were found.");
     return result;
 }
+QString kdePrimaryConnector(const QJsonArray &outputs) {
+    QString name;
+    for(const auto &entry:outputs){auto output=entry.toObject();
+        if(!output["connected"].toBool()||!output["enabled"].toBool(true)||output["priority"].toInt()!=1)continue;
+        if(!name.isEmpty()||output["name"].toString().isEmpty())bad("KDE did not report a unique primary monitor.");
+        name=output["name"].toString();
+    }
+    if(name.isEmpty())bad("KDE did not report a connected primary monitor.");return name;
+}
+int kdePrimaryDesktopScreen(const QJsonArray &desktops,const QJsonArray &outputs) {
+    const QString connector=kdePrimaryConnector(outputs);QJsonObject primary;
+    for(const auto &entry:outputs)if(entry.toObject()["name"].toString()==connector)primary=entry.toObject();
+    int match=-1;auto position=primary["pos"].toObject();
+    for(const auto &entry:desktops){auto desktop=entry.toObject();if(!desktop["active"].toBool(true)||desktop["screen"].toInt(-1)<0)continue;
+        if(desktop["connector"].toString()==connector)return desktop["screen"].toInt();
+        auto geometry=desktop["geometry"].toObject();
+        if(position.contains("x")&&position.contains("y")&&geometry.contains("x")&&geometry.contains("y")&&position["x"]==geometry["x"]&&position["y"]==geometry["y"]){
+            if(match>=0)bad("The primary monitor's desktop is ambiguous. Panel removal is blocked.");match=desktop["screen"].toInt();
+        }
+    }
+    if(match<0)bad("Cannot match KDE's primary monitor to a Plasma desktop. Panel removal is blocked.");return match;
+}
 int primaryDesktopScreen(const QJsonArray &desktops) {
-    if(auto screen=QGuiApplication::primaryScreen())for(const auto &v:desktops){auto d=v.toObject(),g=d["geometry"].toObject();if(QRect(g["x"].toInt(),g["y"].toInt(),g["width"].toInt(),g["height"].toInt())==screen->geometry())return d["screen"].toInt();}
-    return 0;
+    const QString doctor=QStandardPaths::findExecutable("kscreen-doctor");
+    if(doctor.isEmpty())bad("Cannot verify KDE's primary monitor. Panel removal is blocked.");
+    QProcess query;query.start(doctor,QStringList{"--json"});
+    if(!query.waitForFinished(5000)){query.kill();query.waitForFinished();bad("KDE's primary-monitor query timed out. Panel removal is blocked.");}
+    if(query.exitStatus()!=QProcess::NormalExit||query.exitCode()!=0)bad("Cannot read KDE's primary monitor. Panel removal is blocked.");
+    return kdePrimaryDesktopScreen(desktops,QJsonDocument::fromJson(query.readAllStandardOutput()).object()["outputs"].toArray());
 }
 QString monitorDisplayName(const QString &manufacturer,const QString &model,const QString &connector) {
     QString make=manufacturer.simplified(),name=model.simplified();
@@ -46,7 +73,7 @@ QString monitorDisplayName(const QString &manufacturer,const QString &model,cons
 QString primaryMonitorArgument(const QJsonArray &outputs,const QString &connector) {
     if(connector.isEmpty())bad("This monitor could not be matched to a connected KDE output.");
     for(const auto &entry:outputs){auto output=entry.toObject();if(output["name"].toString()!=connector)continue;
-        if(!output["connected"].toBool()||!output["enabled"].toBool())bad("The selected monitor is disconnected or disabled. Refresh displays and try again.");
+        if(!output["connected"].toBool()||!output["enabled"].toBool(true))bad("The selected monitor is disconnected or disabled. Refresh displays and try again.");
         int id=output["id"].toInt(-1);if(id<1||output["id"].toDouble()!=id)bad("KDE returned an invalid monitor identifier.");
         return QString("output.%1.priority.1").arg(id);
     }

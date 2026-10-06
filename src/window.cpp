@@ -150,6 +150,7 @@ QWidget *StudioWindow::appearancePage() {
     auto refreshDisplays=new QPushButton("Refresh displays");displayActions->addWidget(refreshDisplays);
     connect(refreshDisplays,&QPushButton::clicked,this,[this]{if(!busy&&!monitorChanging)refreshInventory();});
     displayActions->addStretch();v->addLayout(displayActions);
+    monitorStatus=label("Checking KDE primary monitor…","subtitle");monitorStatus->setObjectName("monitorStatus");v->addWidget(monitorStatus);
     auto monitorRoot=new QWidget;monitorLayout=new QVBoxLayout(monitorRoot);monitorLayout->setContentsMargins(0,0,0,0);v->addWidget(monitorRoot);
     v->addWidget(label("Wallpaper placement","section"));appearanceScope=new QComboBox;appearanceScope->setObjectName("appearanceWallpaperScope");v->addWidget(appearanceScope);
     appearanceDisplay=new QComboBox;appearanceDisplay->setObjectName("appearanceWallpaperDisplay");v->addWidget(appearanceDisplay);
