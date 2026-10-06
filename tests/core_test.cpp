@@ -9,6 +9,39 @@
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void primaryMonitorFollowsKdePriorityRatherThanScreenOrder() {
+        QJsonObject a{{"id",2},{"name","HDMI-A-1"},{"enabled",true},{"connected",true},{"priority",1},{"pos",QJsonObject{{"x",1200},{"y",1080}}}};
+        auto wacom=a;wacom["id"]=3;wacom["name"]="DP-1";wacom["priority"]=2;wacom["pos"]=QJsonObject{{"x",0},{"y",224}};
+        QJsonArray outputs{wacom,a};
+        QCOMPARE(Studio::kdePrimaryConnector(outputs),QString("HDMI-A-1"));
+        QJsonArray desktops{QJsonObject{{"id",9},{"screen",0},{"geometry",QJsonObject{{"x",0},{"y",224}}}},QJsonObject{{"id",10},{"screen",1},{"geometry",QJsonObject{{"x",1200},{"y",1080}}}}};
+        QCOMPARE(Studio::kdePrimaryDesktopScreen(desktops,outputs),1);
+        a["priority"]=2;wacom["priority"]=1;
+        QCOMPARE(Studio::kdePrimaryConnector(QJsonArray{a,wacom}),QString("DP-1"));
+        QCOMPARE(Studio::kdePrimaryDesktopScreen(desktops,QJsonArray{a,wacom}),0);
+    }
+    void primaryMonitorRejectsUnverifiableState() {
+        QJsonObject output{{"id",1},{"name","DP-1"},{"connected",true},{"enabled",true},{"priority",1},{"pos",QJsonObject{{"x",0},{"y",0}}}};
+        QVERIFY_EXCEPTION_THROWN(Studio::kdePrimaryConnector({}),std::runtime_error);
+        output["enabled"]=false;
+        QVERIFY_EXCEPTION_THROWN(Studio::kdePrimaryConnector(QJsonArray{output}),std::runtime_error);
+        output["enabled"]=true;auto duplicate=output;duplicate["name"]="DP-2";
+        QVERIFY_EXCEPTION_THROWN(Studio::kdePrimaryConnector(QJsonArray{output,duplicate}),std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(Studio::kdePrimaryDesktopScreen({},QJsonArray{output}),std::runtime_error);
+        QJsonObject desktop{{"screen",0},{"geometry",QJsonObject{{"x",0},{"y",0}}}};auto mirror=desktop;mirror["screen"]=1;
+        QVERIFY_EXCEPTION_THROWN(Studio::kdePrimaryDesktopScreen(QJsonArray{desktop,mirror},QJsonArray{output}),std::runtime_error);
+    }
+    void primaryPanelGuardReadsFreshKdeState() {
+        QTemporaryDir temporary;QVERIFY(temporary.isValid());
+        QFile doctor(temporary.filePath("kscreen-doctor"));QVERIFY(doctor.open(QIODevice::WriteOnly));
+        doctor.write("#!/bin/sh\nprintf '%s' '{\"outputs\":[{\"id\":2,\"name\":\"HDMI-A-1\",\"connected\":true,\"enabled\":true,\"priority\":1,\"pos\":{\"x\":1200,\"y\":1080}}]}'\n");doctor.close();
+        QVERIFY(doctor.setPermissions(QFile::ReadOwner|QFile::WriteOwner|QFile::ExeOwner));
+        const auto path=qgetenv("PATH");qputenv("PATH",temporary.path().toUtf8()+":"+path);
+        QJsonArray desktops{QJsonObject{{"screen",0},{"geometry",QJsonObject{{"x",0},{"y",0}}}},QJsonObject{{"screen",4},{"geometry",QJsonObject{{"x",1200},{"y",1080}}}}};
+        int primary=Studio::primaryDesktopScreen(desktops);qputenv("PATH",path);
+        QCOMPARE(primary,4);
+    }
+
     void monitorNamesUseReportedModelAndConnector() {
         QCOMPARE(Studio::monitorDisplayName("Dell", "U2723QE", "DP-1"),QString("Dell U2723QE · DP-1"));
         QCOMPARE(Studio::monitorDisplayName("Dell", "DELL U2723QE", "DP-2"),QString("DELL U2723QE · DP-2"));

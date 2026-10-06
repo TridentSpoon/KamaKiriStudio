@@ -55,6 +55,12 @@ private:
     QList<QComboBox*> monitorEdges;
     bool wallpaperOnly=false;
     bool monitorChanging=false;
+    bool primaryMonitorReady=false, primaryQueryRunning=false;
+    QString primaryMonitorName;
+    QLabel *monitorStatus=nullptr;
+    QJsonArray currentMonitorDesktops;
+    void queryKdeOutputs(std::function<void(QJsonArray,QString)> callback);
+    void refreshPrimaryMonitor(const QString &expected={});
     void identifyMonitors();
     void setPrimaryMonitor(const QString &connector);
     void refreshMonitorControls(const QJsonArray &desktops);

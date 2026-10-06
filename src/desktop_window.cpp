@@ -68,6 +68,7 @@ void StudioWindow::refreshDesktopTools() {
     for(const auto &value:data["desktops"].toArray()){auto d=value.toObject();if(d["screen"].toInt(-1)<0||!d["active"].toBool(true))continue;desktopSelect->addItem(displayLabel(d),d["id"].toInt());}
     if(desktopSelect->findData(old)>=0)desktopSelect->setCurrentIndex(desktopSelect->findData(old));
     refreshMonitorControls(data["desktops"].toArray());
+    if(!demoMode&&!monitorChanging)refreshPrimaryMonitor();
     for(auto choice:widgetChoices){bool available=data["types"].toArray().contains(choice->property("plugin").toString());choice->setEnabled(available);if(!available){choice->setChecked(false);choice->setToolTip("This KDE widget is not installed.");}}
     desktopApply->setEnabled(apply->isEnabled()&&desktopSelect->count()>0);
 }
@@ -83,6 +84,7 @@ void StudioWindow::refreshWallpaperGallery() {
 }
 
 void StudioWindow::refreshMonitorControls(const QJsonArray &desktops) {
+    currentMonitorDesktops=desktops;
     QMap<QString,QPair<bool,QString>> choices;
     for(int i=0;i<monitorEnabled.size();i++)choices[monitorEnabled[i]->property("monitorKey").toString()]={monitorEnabled[i]->isChecked(),monitorEdges[i]->currentData().toString()};
     while(auto item=monitorLayout->takeAt(0)){delete item->widget();delete item;}monitorEnabled.clear();monitorEdges.clear();
@@ -93,12 +95,12 @@ void StudioWindow::refreshMonitorControls(const QJsonArray &desktops) {
         auto edge=new QComboBox;for(const auto &pair:QList<QStringList>{{"None","none"},{"Top","top"},{"Right","right"},{"Bottom","bottom"},{"Left","left"}})edge->addItem(pair[0],pair[1]);
         QJsonObject panel;for(const auto &p:inventory["panels"].toArray())if(p.toObject()["screen"].toInt(0)==screen){panel=p.toObject();break;}
         edge->setProperty("panelId",panel.isEmpty()?-1:panel["id"].toInt());edge->setCurrentIndex(qMax(0,edge->findData(choices.contains(monitorKey)?choices[monitorKey].second:panel["location"].toString("none"))));
-        bool primary=screen==primaryDesktopScreen(desktops);if(primary){enabled->setText(enabled->text()+" · primary");QString selection=edge->currentData().toString();edge->removeItem(0);edge->setCurrentIndex(edge->findData(selection=="none"?"bottom":selection));}
+        bool primary=demoMode?screen==0:(primaryMonitorReady&&matchedScreen&&matchedScreen->name()==primaryMonitorName);if(primary){enabled->setText(enabled->text()+" · primary");QString selection=edge->currentData().toString();edge->removeItem(0);edge->setCurrentIndex(edge->findData(selection=="none"?"bottom":selection));}
         edge->setToolTip(primary?"The primary monitor keeps a panel.":"None removes this monitor's panel; No restores it during a trial.");
-        edge->setEnabled(enabled->isChecked());connect(enabled,&QCheckBox::toggled,edge,&QWidget::setEnabled);connect(edge,&QComboBox::currentIndexChanged,this,[this,edge,primary]{if(primary&&edge->currentData()!="none")edgeSelect->setCurrentText(edge->currentData().toString());});layout->addWidget(new QLabel("Panel"));layout->addWidget(edge);auto primaryButton=new QPushButton(primary?"Primary monitor":"Set primary monitor");
+        edge->setEnabled(enabled->isChecked()&&(demoMode||primaryMonitorReady));connect(enabled,&QCheckBox::toggled,this,[this,edge](bool checked){edge->setEnabled(checked&&(demoMode||primaryMonitorReady));});connect(edge,&QComboBox::currentIndexChanged,this,[this,edge,primary]{if(primary&&edge->currentData()!="none")edgeSelect->setCurrentText(edge->currentData().toString());});layout->addWidget(new QLabel("Panel"));layout->addWidget(edge);auto primaryButton=new QPushButton(primary?"Primary monitor":"Set primary monitor");
         primaryButton->setObjectName("setPrimaryMonitor");
         auto output=screenForDesktop(desktop);QString connector=output?output->name():QString();
-        primaryButton->setEnabled(!demoMode&&!primary&&!connector.isEmpty()&&!QStandardPaths::findExecutable("kscreen-doctor").isEmpty());
+        primaryButton->setEnabled(primaryMonitorReady&&!demoMode&&!primary&&!connector.isEmpty()&&!QStandardPaths::findExecutable("kscreen-doctor").isEmpty());
         primaryButton->setToolTip("Applies immediately to KDE. Finish any appearance trial first. KDE may move the primary panel.");
         connect(primaryButton,&QPushButton::clicked,this,[this,connector]{setPrimaryMonitor(connector);});
         layout->addWidget(primaryButton);layout->addStretch();monitorLayout->addWidget(row);monitorEnabled.append(enabled);monitorEdges.append(edge);
@@ -114,35 +116,62 @@ void StudioWindow::identifyMonitors() {
         if(reply.isError())error("KDE could not identify the monitors. Open System Settings → Display & Monitor to identify them. "+reply.error().message());
     });
 }
-void StudioWindow::setPrimaryMonitor(const QString &connector) {
-    if(demoMode)return;
-    if(busy||monitorChanging||updateProcess){error("Finish the current trial or update before changing the primary monitor.");return;}
+void StudioWindow::queryKdeOutputs(std::function<void(QJsonArray,QString)> callback) {
     const QString doctor=QStandardPaths::findExecutable("kscreen-doctor");
-    if(doctor.isEmpty()){error("KDE's display tool is missing. Open System Settings → Display & Monitor to set the primary monitor.");return;}
-    monitorChanging=true;notice->setText("Checking connected displays…");
-    // Fresh output IDs prevent a hotplug or reordered Plasma screen index
-    // from applying a change to a different monitor. No shell is used.
+    if(doctor.isEmpty()){callback({},"KDE's display tool is missing. Open System Settings → Display & Monitor.");return;}
     auto query=new QProcess(this);auto deadline=new QTimer(query);deadline->setSingleShot(true);
     connect(deadline,&QTimer::timeout,query,&QProcess::kill);deadline->start(10000);
-    auto failed=[this](const QString &message){monitorChanging=false;error(message);};
-    connect(query,&QProcess::errorOccurred,this,[query,failed](QProcess::ProcessError code){if(code==QProcess::FailedToStart){query->deleteLater();failed("KDE's display tool could not start.");}});
-    connect(query,&QProcess::finished,this,[this,query,deadline,doctor,connector,failed](int code,QProcess::ExitStatus status){
+    connect(query,&QProcess::errorOccurred,this,[query,callback](QProcess::ProcessError code){if(code==QProcess::FailedToStart){query->deleteLater();callback({},"KDE's display tool could not start.");}});
+    connect(query,&QProcess::finished,this,[query,deadline,callback](int code,QProcess::ExitStatus status){
         deadline->stop();auto bytes=query->readAllStandardOutput();query->deleteLater();
-        if(code!=0||status!=QProcess::NormalExit){failed("Cannot read KDE display configuration. No primary-monitor change was requested.");return;}
-        QString argument;
-        try{argument=primaryMonitorArgument(QJsonDocument::fromJson(bytes).object()["outputs"].toArray(),connector);}
-        catch(const std::exception &e){failed(e.what());return;}
-        auto change=new QProcess(this);auto timeout=new QTimer(change);timeout->setSingleShot(true);
-        connect(timeout,&QTimer::timeout,change,&QProcess::kill);timeout->start(10000);
-        notice->setText("Setting primary monitor…");
-        connect(change,&QProcess::errorOccurred,this,[change,failed](QProcess::ProcessError error){if(error==QProcess::FailedToStart){change->deleteLater();failed("KDE's display tool could not start.");}});
-        connect(change,&QProcess::finished,this,[this,change,timeout](int result,QProcess::ExitStatus exit){
-            timeout->stop();QString detail=QString::fromUtf8(change->readAllStandardError());change->deleteLater();monitorChanging=false;
-            if(result!=0||exit!=QProcess::NormalExit){error("KDE could not change the primary monitor. Check Display & Monitor settings. "+detail);return;}
-            notice->setText("Primary monitor updated. Refreshing displays…");
-            QTimer::singleShot(500,this,[this]{if(!busy&&!monitorChanging)refreshInventory();});
-        });
-        change->start(doctor,QStringList{argument});
+        if(code!=0||status!=QProcess::NormalExit){callback({},"Cannot read KDE display configuration. Use Refresh displays to retry.");return;}
+        QJsonParseError parseError;auto document=QJsonDocument::fromJson(bytes,&parseError);
+        if(parseError.error!=QJsonParseError::NoError||!document.isObject()||!document.object()["outputs"].isArray()){callback({},"KDE returned unreadable display information. Use Refresh displays to retry.");return;}
+        callback(document.object()["outputs"].toArray(),{});
     });
     query->start(doctor,QStringList{"--json"});
+}
+void StudioWindow::refreshPrimaryMonitor(const QString &expected) {
+    if(demoMode||primaryQueryRunning||busy)return;
+    primaryQueryRunning=true;
+    queryKdeOutputs([this,expected](QJsonArray outputs,QString problem){
+        primaryQueryRunning=false;monitorChanging=false;
+        if(problem.isEmpty())try{primaryMonitorName=kdePrimaryConnector(outputs);primaryMonitorReady=true;}catch(const std::exception &e){problem=e.what();}
+        if(!problem.isEmpty()){
+            primaryMonitorReady=false;primaryMonitorName.clear();
+            monitorStatus->setText(problem);refreshMonitorControls(currentMonitorDesktops);
+            if(!expected.isEmpty())error("The primary-monitor change could not be verified. "+problem);
+            return;
+        }
+        refreshMonitorControls(currentMonitorDesktops);
+        QString name=primaryMonitorName;
+        for(auto screen:QGuiApplication::screens())if(screen->name()==primaryMonitorName)name=monitorDisplayName(screen->manufacturer(),screen->model(),screen->name());
+        if(!expected.isEmpty()&&primaryMonitorName!=expected){
+            monitorStatus->setText("KDE still reports "+name+" as primary. The change was not confirmed.");
+            error("KDE did not confirm the requested primary monitor. Open System Settings → Display & Monitor or retry.");return;
+        }
+        monitorStatus->setText("Primary monitor: "+name);
+        if(!expected.isEmpty()){notice->setText("Primary monitor confirmed by KDE: "+name);refreshInventory();}
+    });
+}
+void StudioWindow::setPrimaryMonitor(const QString &connector) {
+    if(demoMode)return;
+    if(busy||monitorChanging||primaryQueryRunning||updateProcess){error("Finish the current trial, display check or update before changing the primary monitor.");return;}
+    monitorChanging=true;monitorStatus->setText("Checking connected displays…");
+    queryKdeOutputs([this,connector](QJsonArray outputs,QString problem){
+        QString argument;
+        if(problem.isEmpty())try{argument=primaryMonitorArgument(outputs,connector);}catch(const std::exception &e){problem=e.what();}
+        if(!problem.isEmpty()){monitorChanging=false;monitorStatus->setText(problem);error(problem);return;}
+        auto change=new QProcess(this);auto timeout=new QTimer(change);timeout->setSingleShot(true);
+        connect(timeout,&QTimer::timeout,change,&QProcess::kill);timeout->start(10000);
+        monitorStatus->setText("Setting primary monitor…");
+        connect(change,&QProcess::errorOccurred,this,[this,change](QProcess::ProcessError error){if(error==QProcess::FailedToStart){change->deleteLater();monitorChanging=false;monitorStatus->setText("KDE's display tool could not start.");this->error(monitorStatus->text());}});
+        connect(change,&QProcess::finished,this,[this,change,timeout,connector](int result,QProcess::ExitStatus exit){
+            timeout->stop();QString detail=QString::fromUtf8(change->readAllStandardError());change->deleteLater();
+            if(result!=0||exit!=QProcess::NormalExit){monitorChanging=false;monitorStatus->setText("KDE could not change the primary monitor.");error(monitorStatus->text()+" "+detail);return;}
+            monitorStatus->setText("Verifying primary monitor with KDE…");
+            QTimer::singleShot(500,this,[this,connector]{refreshPrimaryMonitor(connector);});
+        });
+        change->start(QStandardPaths::findExecutable("kscreen-doctor"),QStringList{argument});
+    });
 }

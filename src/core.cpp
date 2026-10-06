@@ -335,10 +335,11 @@ void Worker::start() {
             }
             snapshot["panelsBefore"]=before;if(!before.isEmpty())snapshot["panel"]=before.first();
             QJsonArray removed;
+            const int primaryForRemoval=request["changePanel"].toBool()&&!request["removePanelIds"].toArray().isEmpty()?primaryDesktopScreen(desktopInventory()["desktops"].toArray()):-1;
             if(request["changePanel"].toBool())for(const auto &id:request["removePanelIds"].toArray()){
                 QJsonObject old;for(const auto &p:ps)if(p.toObject()["id"]==id)old=p.toObject();
                 if(old.isEmpty())fail("The panel selected for removal is unavailable.");
-                if(old["screen"].toInt(0)==primaryDesktopScreen(desktopInventory()["desktops"].toArray()))fail("The primary monitor must retain its panel.");
+                if(old["screen"].toInt(0)==primaryForRemoval)fail("The primary monitor must retain its panel.");
                 auto saved=snapshotLook(id.toInt(),true);saved["recreate"]=true;removed.append(saved);
             }
             snapshot["removedPanelsBefore"]=removed;
