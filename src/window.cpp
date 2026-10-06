@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "window.h"
+#include <QScreen>
+#include <QGuiApplication>
 #include "wallpaper_gallery.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -107,6 +109,13 @@ StudioWindow::StudioWindow(bool demo,QWidget *parent):QMainWindow(parent),demoMo
     layout->addWidget(pages,1);
     timer.setInterval(200);connect(&timer,&QTimer::timeout,this,&StudioWindow::pollTrial);timer.start();
     qApp->installEventFilter(this);
+    auto displayRefresh=new QTimer(this);displayRefresh->setSingleShot(true);displayRefresh->setInterval(750);
+    connect(displayRefresh,&QTimer::timeout,this,[this]{if(!busy&&!monitorChanging)refreshInventory();});
+    auto watchScreen=[displayRefresh](QScreen *screen){QObject::connect(screen,&QScreen::geometryChanged,displayRefresh,[displayRefresh]{displayRefresh->start();});};
+    for(auto screen:QGuiApplication::screens())watchScreen(screen);
+    connect(qApp,&QGuiApplication::screenAdded,this,[displayRefresh,watchScreen](QScreen *screen){watchScreen(screen);displayRefresh->start();});
+    connect(qApp,&QGuiApplication::screenRemoved,this,[displayRefresh]{displayRefresh->start();});
+    connect(qApp,&QGuiApplication::primaryScreenChanged,this,[displayRefresh]{displayRefresh->start();});
     refreshInventory();
     QTimer::singleShot(0,this,[this]{syncThemeWallpaper();});
     updatePreview();
@@ -135,6 +144,12 @@ QWidget *StudioWindow::appearancePage() {
     preview=new DesktopPreview;v->addWidget(preview);
     v->addWidget(label("Monitors","section"));
     v->addWidget(label("Switch monitors on to include their wallpaper and panel. KDE colors and window styling apply across the session.","subtitle"));
+    auto displayActions=new QHBoxLayout;
+    auto identify=new QPushButton("Identify monitors");identify->setObjectName("identifyMonitors");displayActions->addWidget(identify);
+    connect(identify,&QPushButton::clicked,this,&StudioWindow::identifyMonitors);
+    auto refreshDisplays=new QPushButton("Refresh displays");displayActions->addWidget(refreshDisplays);
+    connect(refreshDisplays,&QPushButton::clicked,this,[this]{if(!busy&&!monitorChanging)refreshInventory();});
+    displayActions->addStretch();v->addLayout(displayActions);
     auto monitorRoot=new QWidget;monitorLayout=new QVBoxLayout(monitorRoot);monitorLayout->setContentsMargins(0,0,0,0);v->addWidget(monitorRoot);
     v->addWidget(label("Wallpaper placement","section"));appearanceScope=new QComboBox;appearanceScope->setObjectName("appearanceWallpaperScope");v->addWidget(appearanceScope);
     appearanceDisplay=new QComboBox;appearanceDisplay->setObjectName("appearanceWallpaperDisplay");v->addWidget(appearanceDisplay);
@@ -292,6 +307,7 @@ QJsonObject StudioWindow::desired() const {
     return result;
 }
 void StudioWindow::beginTrial() {
+    if(monitorChanging){error("Wait for the primary-monitor change to finish before starting an appearance trial.");return;}
     if(updateProcess){error("Wait for the app update to finish before starting an appearance trial.");return;}
     if(busy)return;
     try {

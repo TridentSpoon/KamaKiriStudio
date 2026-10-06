@@ -11,6 +11,25 @@
 #include <QScrollArea>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QScreen>
+#include <QGuiApplication>
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
+#include <QJsonDocument>
+
+static QScreen *screenForDesktop(const QJsonObject &desktop) {
+    auto g=desktop["geometry"].toObject();
+    QRect geometry(g["x"].toInt(),g["y"].toInt(),g["width"].toInt(),g["height"].toInt());
+    QScreen *match=nullptr;
+    for(auto screen:QGuiApplication::screens())if(screen->geometry()==geometry){if(match)return nullptr;match=screen;}
+    return match;
+}
+static QString displayLabel(const QJsonObject &desktop) {
+    if(auto screen=screenForDesktop(desktop))return Studio::monitorDisplayName(screen->manufacturer(),screen->model(),screen->name());
+    return QString("Display %1 · identity unavailable").arg(desktop["screen"].toInt()+1);
+}
 using namespace Studio;
 static QLabel *text(const QString &s,const QString &name={}) {auto l=new QLabel(s);l->setWordWrap(true);l->setObjectName(name);return l;}
 static QFrame *box() {auto b=new QFrame;b->setObjectName("card");return b;}
@@ -46,7 +65,7 @@ void StudioWindow::refreshDesktopTools() {
     QJsonObject data;
     try {if(demoMode)data={{"desktops",QJsonArray{QJsonObject{{"id",1},{"screen",0}}}},{"types",QJsonArray::fromStringList(safeWidgetTypes())}};else data=desktopInventory();}
     catch(const std::exception &e){desktopApply->setEnabled(false);desktopSelect->setToolTip(e.what());return;}
-    for(const auto &value:data["desktops"].toArray()){auto d=value.toObject();if(d["screen"].toInt(-1)<0||!d["active"].toBool(true))continue;desktopSelect->addItem(QString("Screen %1 · desktop %2").arg(d["screen"].toInt()+1).arg(d["id"].toInt()),d["id"].toInt());}
+    for(const auto &value:data["desktops"].toArray()){auto d=value.toObject();if(d["screen"].toInt(-1)<0||!d["active"].toBool(true))continue;desktopSelect->addItem(displayLabel(d),d["id"].toInt());}
     if(desktopSelect->findData(old)>=0)desktopSelect->setCurrentIndex(desktopSelect->findData(old));
     refreshMonitorControls(data["desktops"].toArray());
     for(auto choice:widgetChoices){bool available=data["types"].toArray().contains(choice->property("plugin").toString());choice->setEnabled(available);if(!available){choice->setChecked(false);choice->setToolTip("This KDE widget is not installed.");}}
@@ -64,17 +83,66 @@ void StudioWindow::refreshWallpaperGallery() {
 }
 
 void StudioWindow::refreshMonitorControls(const QJsonArray &desktops) {
-    QMap<int,QPair<bool,QString>> choices;
-    for(int i=0;i<monitorEnabled.size();i++)choices[monitorEnabled[i]->property("screen").toInt()]={monitorEnabled[i]->isChecked(),monitorEdges[i]->currentData().toString()};
+    QMap<QString,QPair<bool,QString>> choices;
+    for(int i=0;i<monitorEnabled.size();i++)choices[monitorEnabled[i]->property("monitorKey").toString()]={monitorEnabled[i]->isChecked(),monitorEdges[i]->currentData().toString()};
     while(auto item=monitorLayout->takeAt(0)){delete item->widget();delete item;}monitorEnabled.clear();monitorEdges.clear();
     for(const auto &entry:desktops){auto desktop=entry.toObject();int screen=desktop["screen"].toInt(-1);if(screen<0||!desktop["active"].toBool(true))continue;
+        auto matchedScreen=screenForDesktop(desktop);QString monitorKey=matchedScreen?matchedScreen->name():QString("desktop:%1").arg(desktop["id"].toInt());
         auto row=new QWidget;auto layout=new QHBoxLayout(row);layout->setContentsMargins(0,0,0,0);
-        auto enabled=new QCheckBox(QString("Monitor %1").arg(screen+1));enabled->setProperty("screen",screen);enabled->setProperty("desktopId",desktop["id"].toInt());enabled->setChecked(choices.contains(screen)?choices[screen].first:true);layout->addWidget(enabled);
+        auto enabled=new QCheckBox(displayLabel(desktop));enabled->setProperty("screen",screen);enabled->setProperty("monitorKey",monitorKey);enabled->setProperty("desktopId",desktop["id"].toInt());enabled->setChecked(choices.contains(monitorKey)?choices[monitorKey].first:true);layout->addWidget(enabled);
         auto edge=new QComboBox;for(const auto &pair:QList<QStringList>{{"None","none"},{"Top","top"},{"Right","right"},{"Bottom","bottom"},{"Left","left"}})edge->addItem(pair[0],pair[1]);
         QJsonObject panel;for(const auto &p:inventory["panels"].toArray())if(p.toObject()["screen"].toInt(0)==screen){panel=p.toObject();break;}
-        edge->setProperty("panelId",panel.isEmpty()?-1:panel["id"].toInt());edge->setCurrentIndex(qMax(0,edge->findData(choices.contains(screen)?choices[screen].second:panel["location"].toString("none"))));
+        edge->setProperty("panelId",panel.isEmpty()?-1:panel["id"].toInt());edge->setCurrentIndex(qMax(0,edge->findData(choices.contains(monitorKey)?choices[monitorKey].second:panel["location"].toString("none"))));
         bool primary=screen==primaryDesktopScreen(desktops);if(primary){enabled->setText(enabled->text()+" · primary");QString selection=edge->currentData().toString();edge->removeItem(0);edge->setCurrentIndex(edge->findData(selection=="none"?"bottom":selection));}
         edge->setToolTip(primary?"The primary monitor keeps a panel.":"None removes this monitor's panel; No restores it during a trial.");
-        edge->setEnabled(enabled->isChecked());connect(enabled,&QCheckBox::toggled,edge,&QWidget::setEnabled);connect(edge,&QComboBox::currentIndexChanged,this,[this,edge,primary]{if(primary&&edge->currentData()!="none")edgeSelect->setCurrentText(edge->currentData().toString());});layout->addWidget(new QLabel("Panel"));layout->addWidget(edge);layout->addStretch();monitorLayout->addWidget(row);monitorEnabled.append(enabled);monitorEdges.append(edge);
+        edge->setEnabled(enabled->isChecked());connect(enabled,&QCheckBox::toggled,edge,&QWidget::setEnabled);connect(edge,&QComboBox::currentIndexChanged,this,[this,edge,primary]{if(primary&&edge->currentData()!="none")edgeSelect->setCurrentText(edge->currentData().toString());});layout->addWidget(new QLabel("Panel"));layout->addWidget(edge);auto primaryButton=new QPushButton(primary?"Primary monitor":"Set primary monitor");
+        primaryButton->setObjectName("setPrimaryMonitor");
+        auto output=screenForDesktop(desktop);QString connector=output?output->name():QString();
+        primaryButton->setEnabled(!demoMode&&!primary&&!connector.isEmpty()&&!QStandardPaths::findExecutable("kscreen-doctor").isEmpty());
+        primaryButton->setToolTip("Applies immediately to KDE. Finish any appearance trial first. KDE may move the primary panel.");
+        connect(primaryButton,&QPushButton::clicked,this,[this,connector]{setPrimaryMonitor(connector);});
+        layout->addWidget(primaryButton);layout->addStretch();monitorLayout->addWidget(row);monitorEnabled.append(enabled);monitorEdges.append(edge);
     }
+}
+
+void StudioWindow::identifyMonitors() {
+    if(demoMode){notice->setText("Display identification is available in your Plasma session.");return;}
+    auto message=QDBusMessage::createMethodCall("org.kde.KWin","/org/kde/KWin/Effect/OutputLocator1","org.kde.KWin.Effect.OutputLocator1","show");
+    auto watcher=new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message,5000),this);
+    connect(watcher,&QDBusPendingCallWatcher::finished,this,[this,watcher]{
+        QDBusPendingReply<> reply=*watcher;watcher->deleteLater();
+        if(reply.isError())error("KDE could not identify the monitors. Open System Settings → Display & Monitor to identify them. "+reply.error().message());
+    });
+}
+void StudioWindow::setPrimaryMonitor(const QString &connector) {
+    if(demoMode)return;
+    if(busy||monitorChanging||updateProcess){error("Finish the current trial or update before changing the primary monitor.");return;}
+    const QString doctor=QStandardPaths::findExecutable("kscreen-doctor");
+    if(doctor.isEmpty()){error("KDE's display tool is missing. Open System Settings → Display & Monitor to set the primary monitor.");return;}
+    monitorChanging=true;notice->setText("Checking connected displays…");
+    // Fresh output IDs prevent a hotplug or reordered Plasma screen index
+    // from applying a change to a different monitor. No shell is used.
+    auto query=new QProcess(this);auto deadline=new QTimer(query);deadline->setSingleShot(true);
+    connect(deadline,&QTimer::timeout,query,&QProcess::kill);deadline->start(10000);
+    auto failed=[this](const QString &message){monitorChanging=false;error(message);};
+    connect(query,&QProcess::errorOccurred,this,[query,failed](QProcess::ProcessError code){if(code==QProcess::FailedToStart){query->deleteLater();failed("KDE's display tool could not start.");}});
+    connect(query,&QProcess::finished,this,[this,query,deadline,doctor,connector,failed](int code,QProcess::ExitStatus status){
+        deadline->stop();auto bytes=query->readAllStandardOutput();query->deleteLater();
+        if(code!=0||status!=QProcess::NormalExit){failed("Cannot read KDE display configuration. No primary-monitor change was requested.");return;}
+        QString argument;
+        try{argument=primaryMonitorArgument(QJsonDocument::fromJson(bytes).object()["outputs"].toArray(),connector);}
+        catch(const std::exception &e){failed(e.what());return;}
+        auto change=new QProcess(this);auto timeout=new QTimer(change);timeout->setSingleShot(true);
+        connect(timeout,&QTimer::timeout,change,&QProcess::kill);timeout->start(10000);
+        notice->setText("Setting primary monitor…");
+        connect(change,&QProcess::errorOccurred,this,[change,failed](QProcess::ProcessError error){if(error==QProcess::FailedToStart){change->deleteLater();failed("KDE's display tool could not start.");}});
+        connect(change,&QProcess::finished,this,[this,change,timeout](int result,QProcess::ExitStatus exit){
+            timeout->stop();QString detail=QString::fromUtf8(change->readAllStandardError());change->deleteLater();monitorChanging=false;
+            if(result!=0||exit!=QProcess::NormalExit){error("KDE could not change the primary monitor. Check Display & Monitor settings. "+detail);return;}
+            notice->setText("Primary monitor updated. Refreshing displays…");
+            QTimer::singleShot(500,this,[this]{if(!busy&&!monitorChanging)refreshInventory();});
+        });
+        change->start(doctor,QStringList{argument});
+    });
+    query->start(doctor,QStringList{"--json"});
 }

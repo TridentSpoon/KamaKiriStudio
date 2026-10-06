@@ -54,6 +54,9 @@ private:
     QList<QCheckBox*> monitorEnabled;
     QList<QComboBox*> monitorEdges;
     bool wallpaperOnly=false;
+    bool monitorChanging=false;
+    void identifyMonitors();
+    void setPrimaryMonitor(const QString &connector);
     void refreshMonitorControls(const QJsonArray &desktops);
     void selectWallpaper(const QString &path,bool matchColors);
     void refreshWallpaperGallery();

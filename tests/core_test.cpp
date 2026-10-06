@@ -9,6 +9,23 @@
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void monitorNamesUseReportedModelAndConnector() {
+        QCOMPARE(Studio::monitorDisplayName("Dell", "U2723QE", "DP-1"),QString("Dell U2723QE · DP-1"));
+        QCOMPARE(Studio::monitorDisplayName("Dell", "DELL U2723QE", "DP-2"),QString("DELL U2723QE · DP-2"));
+        QCOMPARE(Studio::monitorDisplayName("", "", "HDMI-A-1"),QString("HDMI-A-1"));
+    }
+    void primaryMonitorUsesFreshKdeOutputIdAndRejectsUnavailableDisplays() {
+        QJsonObject output{{"id",42},{"name","DP-2"},{"enabled",true},{"connected",true}};
+        QCOMPARE(Studio::primaryMonitorArgument(QJsonArray{output},"DP-2"),QString("output.42.priority.1"));
+        QVERIFY_EXCEPTION_THROWN(Studio::primaryMonitorArgument(QJsonArray{output},"DP-1"),std::runtime_error);
+        output["connected"]=false;
+        QVERIFY_EXCEPTION_THROWN(Studio::primaryMonitorArgument(QJsonArray{output},"DP-2"),std::runtime_error);
+        output["connected"]=true;output["enabled"]=false;
+        QVERIFY_EXCEPTION_THROWN(Studio::primaryMonitorArgument(QJsonArray{output},"DP-2"),std::runtime_error);
+        output["enabled"]=true;output["id"]=1.5;
+        QVERIFY_EXCEPTION_THROWN(Studio::primaryMonitorArgument(QJsonArray{output},"DP-2"),std::runtime_error);
+    }
+
     void panelSettingsComparisonIgnoresEmptyGroupsAndRetainsValues() {
         QJsonObject root{{"path",QJsonArray{}},{"entries",QJsonObject{{"popupWidth","560"}}},{"children",QJsonArray{}}};
         auto restored=root;restored["children"]=QJsonArray{QJsonObject{{"path",QJsonArray{"General"}},{"entries",QJsonObject{}},{"children",QJsonArray{}}}};
