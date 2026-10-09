@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "core.h"
 #include "input_monitor.h"
+#include "plugin_checks.h"
 #include <KConfig>
 #include <KConfigGroup>
 #include <KIdleTime>
@@ -268,6 +269,8 @@ static void restoreSnapshot(const QString &dir, bool demo) {
     auto snapshot = readJson(dir+"/snapshot.json");
     if (snapshot.isEmpty()) fail("Recovery snapshot is missing.");
     if (!demo) {
+        // Verify recovery plugins before any restoration or removal of trial widgets.
+        checkPluginSession(recoveryPluginRequirements(snapshot));
         if(snapshot["changeColors"].toBool(true)) {restoreColors(dir+"/colors-before.ini", configFile());notifyPalette();}
         if(snapshot["changePopupLook"].toBool()) {
             QSettings settings;auto old=snapshot["popupBefore"].toObject();for(const auto &key:{"popup/style","popup/mode","desktop/look"}){auto entry=old[key].toObject();if(entry["present"].toBool())settings.setValue(key,entry["value"].toVariant());else settings.remove(key);}settings.sync();if(settings.status()!=QSettings::NoError)fail("Popup look restoration failed.");
@@ -285,12 +288,14 @@ static void restoreSnapshot(const QString &dir, bool demo) {
         if(snapshot["changeWallpaper"].toBool()) {
             auto before=snapshot["wallpaperBefore"].toArray();if(before.isEmpty())before.append(snapshot["desktop"]);
             for(const auto &entry:before){auto old=entry.toObject();plasmaScript(wallpaperScript(old["id"].toInt(),old["image"].toString()));bool ok=false;for(const auto &d:desktopInventory()["desktops"].toArray())if(d.toObject()["id"]==old["id"]&&d.toObject()["image"]==old["image"])ok=true;if(!ok)fail("Wallpaper restoration could not be verified.");}
-            QDir generated(dir+"/wallpapers");if(generated.exists())generated.removeRecursively();
         }
         if(snapshot["changeWidgets"].toBool()) {
             QString owner=QFileInfo(dir).fileName();plasmaScript(removeTrialWidgetsScript(owner));
             auto recovered=desktopInventory();for(const auto &key:{"desktops","panelWidgets"})for(const auto &d:recovered[key].toArray())for(const auto &w:d.toObject()["widgets"].toArray())if(w.toObject()["owner"]==owner)fail("Widget restoration could not be verified.");
         }
+        // Recheck before cleanup in case packages/session changed during restore.
+        checkPluginSession(recoveryPluginRequirements(snapshot));
+        if(snapshot["changeWallpaper"].toBool()){QDir generated(dir+"/wallpapers");if(generated.exists())generated.removeRecursively();}
         // This is always a freshly generated file with an internal UUID, never a supplied path.
         QString id = QFileInfo(dir).fileName();
         QString own = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)+"/color-schemes/KamaKiriStudio-"+id+".colors";
@@ -366,6 +371,13 @@ void Worker::start() {
         snapshot["changeWidgets"]=!request["widgets"].toArray().isEmpty()||request["panelPopupActions"].toBool()||!request["desktopLook"].toString().isEmpty();
         snapshot["changeColors"]=request["changeColors"].toBool(true);
         snapshot["changePopupLook"]=request["changePopupLook"].toBool();
+        if(!demo){
+            setState("applying","Checking Plasma runtime and plugins for the trial and recovery…");
+            auto required=trialPluginRequirements(request,snapshot);
+            snapshot["pluginSessionBefore"]=checkPluginSession(required);
+            snapshot["trialPluginRequirements"]=QJsonArray::fromStringList(required);
+            snapshot["recoveryPluginRequirements"]=QJsonArray::fromStringList(recoveryPluginRequirements(snapshot));
+        }
         writeJson(dir+"/snapshot.json",snapshot);
         if(!demo&&request["changeColors"].toBool(true)) {
             QString scheme=makeScheme(request,QFileInfo(dir).fileName());
@@ -420,6 +432,7 @@ void Worker::start() {
             for(const auto &d:desktopData["desktops"].toArray())if(d.toObject()["id"]==request["desktopId"])for(const auto &w:d.toObject()["widgets"].toArray())actual.append(w.toObject()["type"]);
             for(const auto &t:request["widgets"].toArray())if(!actual.contains(t))fail("Widget application could not be verified.");
         }
+        if(!demo)checkPluginSession(trialPluginRequirements(request,snapshot));
         // Arm AFTER application finishes. The click that initiated Apply is not trial input.
         trialClock.start();
         lastHeartbeat=lifeClock.elapsed();
@@ -452,6 +465,7 @@ void Worker::tick() {
         // Revert wins if the UI died. A stale confirmation cannot keep an orphan trial.
         if(!ownerAlive || policy.rejected) {rollback(ownerAlive?"You chose No.":"The manager closed or stopped responding.");return;}
         if(c["decision"]=="yes") {
+            if(!demo)checkPluginSession(trialPluginRequirements(request,readJson(dir+"/snapshot.json")));
             policy.accepted=true;
             armed=false;
             setState("kept", "Changes kept.");
