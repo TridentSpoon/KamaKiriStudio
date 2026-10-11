@@ -156,7 +156,7 @@ private slots:
     void wallpaperCatalogContainsEveryThemeImage() {
         QStringList ids{"caelestia","ryoku","windows","breeze"};
         for(const auto &entry:Studio::omarchyPalettes())ids.append(entry.toObject()["id"].toString());
-        for(const auto &id:ids){auto paths=Studio::themeWallpapers(id);QCOMPARE(paths.size(),id=="omarchy-retro-82"?8:id=="omarchy-tokyo-night"?7:5);QCOMPARE(Studio::associatedWallpaper(id),paths.first());for(const auto &path:paths)QVERIFY(!Studio::loadWallpaper(path).isNull());}
+        for(const auto &id:ids){auto paths=Studio::themeWallpapers(id);QCOMPARE(paths.size(),id=="omarchy-retro-82"?8:id=="omarchy-tokyo-night"?7:id=="omarchy-catppuccin"?9:5);QCOMPARE(Studio::associatedWallpaper(id),paths.first());for(const auto &path:paths)QVERIFY(!Studio::loadWallpaper(path).isNull());}
         QVERIFY(Studio::themeWallpapers("missing-theme").isEmpty());
         for(const auto &id:{"omarchy-rose-pine","omarchy-lumon"})for(const auto &path:Studio::themeWallpapers(id)){QVERIFY(!path.contains("omarchy-plants"));QVERIFY(!path.contains("opinions-equally"));}
 

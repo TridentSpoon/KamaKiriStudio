@@ -12,10 +12,10 @@ for key,bg,accent in [('caelestia','#181622','#c4a7ff'),('ryoku','#151515','#e6a
 folder=root/'assets/wallpapers';catalog=json.loads((folder/'catalog.json').read_text())
 for key,name in [('omarchy-rose-pine','rose-pine__3-omarchy-plants.webp'),('omarchy-lumon','lumon__02-opinions-equally.webp')]:
  if name in catalog[key]:catalog[key].remove(name)
-# Keep the first five existing works except Retro and Tokyo Night, which keep their extras.
+# Keep curated extra collections for Retro, Tokyo Night and Catppuccin.
 for key,palette in palettes.items():
  names=catalog.setdefault(key,[])
- if key not in ('omarchy-retro-82','omarchy-tokyo-night'):names[:]=names[:5]
+ if key not in ('omarchy-retro-82','omarchy-tokyo-night','omarchy-catppuccin'):names[:]=names[:5]
  for n in range(len(names),5):
   design=n%5;name=f'{key}__studio-{design+1}.png'
   bg=ImageColor.getrgb(palette['background']);ac=ImageColor.getrgb(palette['accent']);alt=ImageColor.getrgb(palette.get('magenta',palette['accent']))
