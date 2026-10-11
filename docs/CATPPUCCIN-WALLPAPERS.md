@@ -7,7 +7,7 @@ Created with the built-in image generation tool on 11 October 2026. The first wa
 All paths below are relative to `assets/wallpapers/`.
 
 - `catppuccin__totoro-leaf-umbrella.png`
-- `catppuccin__totoro-sleepy-tree.png`
+- `catppuccin__totoro-sleepy-tree.png` (now a smiling face close-up; filename retained for saved wallpaper selections)
 - `catppuccin__totoro-soot-sprites.png`
 - `catppuccin__totoro-log-walk.png`
 - `omarchy-catppuccin-latte__studio-2.png` (recoloured hills)
@@ -22,7 +22,7 @@ The Catppuccin catalogue puts the untouched original first, followed by the four
 Use case: illustration-story. One landscape 16:9 desktop wallpaper per scene. Reference `catppuccin.webp` is a style and palette reference only. Match its minimalist clean silhouette illustration: solid dark navy background #181825, a large central lavender-to-pastel-pink circular moon (#cba6f7 to #f5c2e7), dark silhouette characters, lavender negative-space facial/belly details, vast calm empty space. Recognizable pointed ears, whiskers and belly chevrons. No lettering, logos, watermarks, photorealism, collage, complex background or additional bright colours. Preserve the reference unchanged.
 
 1. Full-body Totoro standing underneath a large leaf umbrella, a few tiny soot sprites around his feet, framed within the centered pastel circular moon.
-2. Totoro sleeping curled beneath a small stylized tree, with two tiny companion Totoros sitting beside him inside the moon. Sparse silhouette branches inside the circle.
+2. Close-up of Totoro’s cheerful face with his iconic wide toothy grin, framed by the lavender-pink moon. This replaces the original sleeping-under-the-tree scene.
 3. Totoro sitting looking upward with a small Totoro companion, a few floating soot sprites and sparse leaf silhouettes, all contained in the moon.
 4. Totoro standing on a gently arched log with a leaf on his head, small and medium Totoro companions walking behind him, and a few soot sprites perched on the log. Circle frames the quiet scene.
 
@@ -45,3 +45,7 @@ Use case: style-transfer. Recolour image 1 ONLY; image 2 is COLOUR PALETTE REFER
 ### Studio 5
 
 Use case: style-transfer. Recolour image 1 ONLY; image 2 is COLOUR PALETTE REFERENCE ONLY. Preserve image 1's 16:9 landscape aspect ratio, open upper background, circular sun position and size, low layered hill silhouettes and entire composition. Replace cool white, bright magenta sun and saturated blue hills with the warm cream, peach, very soft pastel pink, pale lilac, muted mint and powder blue colours from image 2 (catppuccin-latte). Warm cream-to-peach background, soft peach-pink sun, gently blended pastel lilac/powder-blue/mint hills, no saturated colours. The scene should feel like a sibling of the soft first Latte wallpaper. No new objects, text, logos, watermark or collage. One finished wallpaper, ideally 2560x1440.
+
+## Smiling close-up replacement prompt
+
+Use case: precise-object-edit. Asset: 16:9 landscape desktop wallpaper. Replace the scene in the reference image: remove tree, sleeping Totoros, small companions, grass and body/belly. Instead create a CLOSE-UP of Totoro's face with his iconic enormous cheerful toothy grin, rounded cheeks, small nose, round eyes, whiskers and pointed ears. Face fills most of the existing central lavender-to-pastel-pink circular moon. Crop at chin/neck, no full body. Big friendly wide smile with a single row of broad pale lavender teeth separated by simple dark lines, recognizable happy Totoro expression. Preserve reference's minimalist clean navy silhouette illustration style, solid dark navy #181825 background, central circular lavender #cba6f7 to soft pink #f5c2e7 gradient and large empty space surrounding the circle. Face dark navy silhouette with lavender negative-space eyes and smile, no realistic fur, no new colours. No tree, other characters, text, logo, watermark or collage. One finished wallpaper, ideally 3840x2160. Keep composition calming and suitable for desktop.
