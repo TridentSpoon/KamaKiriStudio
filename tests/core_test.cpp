@@ -4,12 +4,30 @@
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QFile>
+#include <QStandardPaths>
+#include <QUuid>
 #include <KConfig>
 #include <KConfigGroup>
 
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void personalWallpapersPersistAndStayWithTheirPreset() {
+        QTemporaryDir source;QVERIFY(source.isValid());
+        const auto oldData=qgetenv("XDG_DATA_HOME");qputenv("XDG_DATA_HOME",source.path().toUtf8());
+        const QString preset="test-personal-"+QUuid::createUuid().toString(QUuid::Id128);
+        const auto original=source.filePath("picture.png");QImage image(32,32,QImage::Format_RGB32);image.fill(Qt::red);QVERIFY(image.save(original));
+        const auto saved=Studio::addThemeWallpaper(preset,original);
+        QCOMPARE(Studio::addThemeWallpaper(preset,original),saved);
+        QVERIFY(QFile::remove(original));QCOMPARE(Studio::themeWallpapers(preset),QStringList{saved});
+        QVERIFY(!Studio::themeWallpapers("caelestia").contains(saved));
+        QVERIFY_EXCEPTION_THROWN(Studio::addThemeWallpaper("../escape",saved),std::runtime_error);
+        QFile invalid(source.filePath("invalid.png"));QVERIFY(invalid.open(QIODevice::WriteOnly));invalid.write("invalid");invalid.close();
+        QVERIFY_EXCEPTION_THROWN(Studio::addThemeWallpaper(preset,invalid.fileName()),std::runtime_error);
+        QVERIFY(QFile::remove(saved));
+        if(oldData.isNull())qunsetenv("XDG_DATA_HOME");else qputenv("XDG_DATA_HOME",oldData);
+    }
+
     void compatibilityIncludesNewLayoutAndRollbackPlugins() {
         QJsonObject icon{{"id",1},{"type","org.kde.plasma.icon"}};
         QJsonObject tray{{"id",2},{"type","org.kde.plasma.systemtray"},{"config",QJsonObject{{"entries",QJsonObject{{"plugin","org.kde.plasma.volume"}}}}}};

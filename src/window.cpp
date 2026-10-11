@@ -127,7 +127,7 @@ QWidget *StudioWindow::appearancePage() {
     v->addWidget(label("Choose your desktop layout and menus, then its colors and wallpaper.","subtitle"));
     lookSelect=new QComboBox;lookSelect->addItem("Keep current layout · customize colors","");lookSelect->addItem("Default Plasma · native KDE desktop","plasma");lookSelect->addItem("Kamakiri style · rounded menus and left rail","caelestia");lookSelect->addItem("Fluent 11 · Windows 11 layout","fluent11");lookSelect->addItem("Fluent 10 · Windows 10 layout","fluent10");
     QSettings savedLook;lookSelect->setCurrentIndex(qMax(0,lookSelect->findData(savedLook.value("desktop/look",""))));
-    v->addWidget(label("Desktop look","section"));v->addWidget(lookSelect);
+    v->addWidget(label("Theme","section"));v->addWidget(lookSelect);
     colorEnabled=new QCheckBox("Include KDE color changes in this trial");colorEnabled->setChecked(true);
     themeSelect=new QComboBox;
     themeSelect->addItem("Lavender","caelestia");
@@ -138,7 +138,7 @@ QWidget *StudioWindow::appearancePage() {
     for (const auto &value:omarchyPalettes()) {
         auto p=value.toObject(); themeSelect->addItem(p["name"].toString(),p["id"].toString());
     }
-    v->addWidget(label("Theme and wallpaper","section")); v->addWidget(themeSelect);
+    v->addWidget(label("Colours and wallpaper","section")); v->addWidget(themeSelect);
     themeWallpaperEnabled=new QCheckBox("Use the associated theme wallpaper");themeWallpaperEnabled->setChecked(true);connect(themeWallpaperEnabled,&QCheckBox::toggled,this,[this]{syncThemeWallpaper();});
     connect(themeSelect,&QComboBox::currentIndexChanged,this,[this]{choosePreset(themeSelect->currentData().toString());});
     preview=new DesktopPreview;v->addWidget(preview);
@@ -154,8 +154,24 @@ QWidget *StudioWindow::appearancePage() {
     auto monitorRoot=new QWidget;monitorLayout=new QVBoxLayout(monitorRoot);monitorLayout->setContentsMargins(0,0,0,0);v->addWidget(monitorRoot);
     v->addWidget(label("Wallpaper placement","section"));appearanceScope=new QComboBox;appearanceScope->setObjectName("appearanceWallpaperScope");v->addWidget(appearanceScope);
     appearanceDisplay=new QComboBox;appearanceDisplay->setObjectName("appearanceWallpaperDisplay");v->addWidget(appearanceDisplay);
-    v->addWidget(label("Theme wallpapers","section"));appearanceGallery=new WallpaperGallery;v->addWidget(appearanceGallery);
+    v->addWidget(label("Wallpapers","section"));
+    wallpaperGroup=new QComboBox;wallpaperGroup->setObjectName("wallpaperGroup");wallpaperGroup->addItem("Current colours · matching wallpapers",QString());
+    for(int i=0;i<themeSelect->count();++i)if(themeSelect->itemData(i).toString()!="wallpaper")wallpaperGroup->addItem(themeSelect->itemText(i),themeSelect->itemData(i));
+    wallpaperGroup->setToolTip("Browse another colour preset’s wallpaper variants without changing your theme or colours.");v->addWidget(wallpaperGroup);
+    connect(wallpaperGroup,&QComboBox::currentIndexChanged,this,[this]{refreshWallpaperGallery();});
+    appearanceGallery=new WallpaperGallery;v->addWidget(appearanceGallery);
     appearanceGallery->onSelected=[this](const QString &path){if(!busy)selectWallpaper(path,false);};
+    auto addWallpapers=new QPushButton("Add your own wallpapers…");addWallpapers->setObjectName("addThemeWallpapers");v->addWidget(addWallpapers);
+    connect(addWallpapers,&QPushButton::clicked,this,[this]{
+        if(busy){error("Finish the current trial before adding wallpapers.");return;}
+        const auto target=wallpaperGroup->currentData().toString().isEmpty()?preset:wallpaperGroup->currentData().toString();
+        const auto paths=QFileDialog::getOpenFileNames(this,"Add wallpapers to this colour preset",QStandardPaths::writableLocation(QStandardPaths::PicturesLocation),"Images (*.png *.jpg *.jpeg *.webp *.bmp)");
+        if(paths.isEmpty())return;
+        QString first;QStringList failures;int added=0;
+        for(const auto &path:paths)try {const auto saved=addThemeWallpaper(target,path);if(first.isEmpty())first=saved;++added;}catch(const std::exception &e){failures.append(QFileInfo(path).fileName()+": "+QString::fromUtf8(e.what()));}
+        refreshWallpaperGallery();if(!first.isEmpty())selectWallpaper(first,false);
+        if(!failures.isEmpty())error(failures.join("\n"));else notice->setText(QString("%1 wallpaper(s) saved to this colour preset. Choose Apply wallpaper to try your selection.").arg(added));
+    });
     auto attribution=label("As seen in and inspired by Omarchy","subtitle");attribution->setObjectName("themeAttribution");attribution->setAlignment(Qt::AlignRight);v->addWidget(attribution);
     auto wallpaperApply=new QPushButton("Apply wallpaper");wallpaperApply->setObjectName("applyWallpaper");v->addWidget(wallpaperApply);
     connect(wallpaperApply,&QPushButton::clicked,this,[this]{if(busy)return;if(wallpaperPath.isEmpty()){error("Choose a wallpaper first.");return;}wallpaperOnly=true;beginTrial();wallpaperOnly=false;});

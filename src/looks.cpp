@@ -15,6 +15,11 @@
 #include <stdexcept>
 #include <algorithm>
 #include <QThread>
+#include <QDir>
+#include <QFile>
+#include <QSaveFile>
+#include <QImageReader>
+#include <QCryptographicHash>
 namespace Studio {
 static void bad(const QString &s){throw std::runtime_error(s.toStdString());}
 QJsonObject desktopPalette(const QString &preset,const QString &mode) {
@@ -28,12 +33,39 @@ QJsonObject desktopPalette(const QString &preset,const QString &mode) {
     return p;
 }
 QStringList desktopLooks(){return {"plasma","caelestia","fluent11","fluent10"};}
+static QString personalWallpaperDirectory(const QString &preset) {
+    if(!QRegularExpression("^[a-zA-Z0-9_-]{1,80}$").match(preset).hasMatch())bad("Invalid colour preset.");
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)+"/wallpapers/"+preset;
+}
+QString addThemeWallpaper(const QString &preset,const QString &source) {
+    loadWallpaper(source);
+    QFile input(source);
+    if(!input.open(QIODevice::ReadOnly))bad("Cannot read the selected wallpaper.");
+    const auto bytes=input.read(50*1024*1024+1);
+    if(bytes.size()>50*1024*1024||input.error()!=QFileDevice::NoError)bad("Cannot read a wallpaper smaller than 50 MB.");
+    const auto directory=personalWallpaperDirectory(preset);
+    if(!QDir().mkpath(directory))bad("Cannot create your wallpaper gallery.");
+    const auto path=directory+"/"+QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex())+"."+QString::fromLatin1(QImageReader(source).format().toLower());
+    if(!QFileInfo::exists(path)) {
+        QSaveFile output(path);
+        if(!output.open(QIODevice::WriteOnly)||output.write(bytes)!=bytes.size()||!output.commit())bad("Cannot save your wallpaper.");
+        try {loadWallpaper(path);}catch(...) {QFile::remove(path);throw;}
+    } else loadWallpaper(path);
+    return path;
+}
 QStringList themeWallpapers(const QString &preset) {
     QString catalog=QStringLiteral(STUDIO_ASSET_DIRECTORY)+"/wallpapers/catalog.json";
     if(!QFileInfo::exists(catalog))catalog=QStandardPaths::locate(QStandardPaths::GenericDataLocation,"kamakiri-studio/wallpapers/catalog.json");
-    if(catalog.isEmpty())return {};
-    QJsonValue value=readJson(catalog).value(preset);QJsonArray names=value.isArray()?value.toArray():QJsonArray{value};QStringList result;
+
+    QJsonValue value=catalog.isEmpty()?QJsonValue():readJson(catalog).value(preset);QJsonArray names=value.isArray()?value.toArray():QJsonArray{value};QStringList result;
     for(const auto &nameValue:names){auto name=nameValue.toString();if(name.isEmpty()||name.contains('/')||name.contains(".."))continue;auto path=QFileInfo(catalog).absolutePath()+"/"+name;if(QFileInfo(path).isFile())result.append(path);}
+    if(QRegularExpression("^[a-zA-Z0-9_-]{1,80}$").match(preset).hasMatch()) {
+        QDir personal(personalWallpaperDirectory(preset));
+        for(const auto &name:personal.entryList({"*.png","*.jpeg","*.jpg","*.webp","*.bmp"},QDir::Files,QDir::Name)) {
+            const auto path=personal.absoluteFilePath(name);
+            try {loadWallpaper(path);result.append(path);}catch(const std::exception &) { /* Ignore damaged personal images. */ }
+        }
+    }
     return result;
 }
 QString associatedWallpaper(const QString &preset){auto paths=themeWallpapers(preset);return paths.isEmpty()?QString():paths.first();}

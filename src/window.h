@@ -47,7 +47,7 @@ private:
     QImage selectedWallpaper;
     QJsonObject derivedPalette;
     QComboBox *desktopSelect;
-    QComboBox *wallpaperScope=nullptr, *wallpaperTheme=nullptr;
+    QComboBox *wallpaperScope=nullptr, *wallpaperTheme=nullptr, *wallpaperGroup=nullptr;
     QComboBox *appearanceScope=nullptr, *appearanceDisplay=nullptr;
     WallpaperGallery *wallpaperGallery=nullptr, *appearanceGallery=nullptr;
     QVBoxLayout *monitorLayout=nullptr;

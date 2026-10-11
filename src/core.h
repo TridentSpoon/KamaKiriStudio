@@ -17,6 +17,7 @@ QStringList desktopLooks();
 QJsonObject comparablePanelWidgetConfig(QJsonObject node,const QMap<QString,QString> &ids={});
 QJsonArray orderedPanelWidgets(const QJsonArray &widgets);
 QStringList themeWallpapers(const QString &preset);
+QString addThemeWallpaper(const QString &preset,const QString &source);
 QJsonArray wallpaperTargets(const QJsonArray &desktops,int selected,const QString &scope,const QJsonArray &included=QJsonArray{});
 QList<QImage> spanWallpaper(const QImage &image,const QList<QRect> &screens);
 QString associatedWallpaper(const QString &preset);

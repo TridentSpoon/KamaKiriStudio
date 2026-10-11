@@ -7,7 +7,7 @@ A native KDE desktop studio that keeps Plasma and KWin as its base. Inspired by 
 ## Features
 
 - Complete KDE color palettes, editable accents and panel placement, height and floating controls.
-- A honeycomb gallery with 72 bundled theme wallpapers, excluding logo-only variants, credited “As seen in Omarchy”, and a local wallpaper picker with optional matching colors.
+- A honeycomb gallery with 72 bundled theme wallpapers, excluding logo-only variants, credited “As seen in and inspired by Omarchy”, and a local wallpaper picker with optional matching colors.
 - Monitor make/model and connector names, native KDE monitor identification and per-monitor primary-display controls. Primary changes apply immediately through KDE; appearance trials must finish first.
 - Wallpaper placement on one display, the same image on the enabled displays, or one image spanning the KDE display arrangement.
 - An installed KDE widget collection: clock, media player, CPU, memory, application dashboard, calendar, volume and network. Existing widgets are preserved and duplicate types are skipped.
@@ -114,6 +114,6 @@ Desktop look now includes **Default Plasma**, using native KDE Application Launc
 
 Appearance keeps the desktop look, theme preview, monitor switches, per-monitor panel position, wallpaper placement and gallery together. Detailed color, panel and popup settings are under **Advanced settings**. **Apply wallpaper** starts a wallpaper-only trial. Monitor switches scope wallpapers and panel changes; KDE colors and window styling remain session-wide. **None** removes secondary panels with recovery snapshots and is disabled on the primary monitor. Choosing a position on a monitor without a panel creates one, which No removes.
 
-Appearance now includes wallpaper placement, theme galleries, local image selection and native Plasma widget choices. Each named theme offers five wallpapers, with the extra Retro 82 and Tokyo Night artwork retained. Local images and widget choices are under Advanced settings.
+Appearance now includes wallpaper placement, theme galleries, local image selection and native Plasma widget choices. Each named theme offers five wallpapers, with the extra Retro 82 and Tokyo Night artwork retained. Use **Add your own wallpapers…** in **Wallpapers** to save images to the browsed wallpaper group. The group selector defaults to the current colours; choose another group to browse its wallpaper variants without changing your theme or palette. Images are copied into the app’s local data folder, deduplicated, and kept alongside bundled choices; adding an image only selects it for preview. **Apply wallpaper** starts the reversible trial. The headings are **Theme** for desktop layout and **Colours and wallpaper** for the palette preset. Additional local image and widget controls are under Advanced settings.
 
 Fluent 10 and Fluent 11 place the native clock/calendar and Desktop Peek at the far right. KamaKiri Launcher and Dashboard panel shortcuts are exclusive to Kamakiri style. Existing unrelated widgets stay before the right-hand tray/clock section.

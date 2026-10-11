@@ -80,7 +80,9 @@ void StudioWindow::selectWallpaper(const QString &path,bool matchColors) {
 void StudioWindow::refreshWallpaperGallery() {
     if(!wallpaperTheme||!wallpaperGallery)return;
     int index=wallpaperTheme->findData(preset);if(index>=0){QSignalBlocker block(wallpaperTheme);wallpaperTheme->setCurrentIndex(index);}
-    wallpaperGallery->setWallpapers(themeWallpapers(wallpaperTheme->currentData().toString()));wallpaperGallery->setSelected(wallpaperPath);if(appearanceGallery){appearanceGallery->setWallpapers(themeWallpapers(wallpaperTheme->currentData().toString()));appearanceGallery->setSelected(wallpaperPath);}
+    const auto group=wallpaperGroup&& !wallpaperGroup->currentData().toString().isEmpty()?wallpaperGroup->currentData().toString():preset;
+    wallpaperGallery->setWallpapers(themeWallpapers(group));wallpaperGallery->setSelected(wallpaperPath);
+    if(auto credit=findChild<QLabel*>("themeAttribution"))credit->setVisible(group.startsWith("omarchy-"));
 }
 
 void StudioWindow::refreshMonitorControls(const QJsonArray &desktops) {
