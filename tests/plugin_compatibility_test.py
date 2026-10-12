@@ -44,6 +44,16 @@ class PluginCompatibilityTest(unittest.TestCase):
         self.assertIn('KAMAKIRI_PLUGIN_IMPORT_OK', result.stdout)
         self.assertNotIn("ReferenceError", result.stderr)
 
+    def test_start_configuration_imports_are_compatible(self):
+        repository = Path(__file__).resolve().parents[1]
+        package = repository / 'assets/plasmoids/org.kamakiri.start/contents'
+        for name, source in [('general', package / 'ui/ConfigGeneral.qml'), ('model', package / 'config/config.qml')]:
+            plugin = 'org.kamakiri.testconfig' + name
+            self.make_plugin(plugin, source.read_text())
+            result = self.run_app('--probe-plugin', plugin)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('KAMAKIRI_PLUGIN_IMPORT_OK', result.stdout)
+
     def test_incompatible_import_has_named_error_and_no_success(self):
         self.make_plugin('org.kamakiri.testbroken', 'import Missing.Qt.Plugin 99.0\nQtObject {}\n')
         result = self.run_app('--probe-plugin', 'org.kamakiri.testbroken')

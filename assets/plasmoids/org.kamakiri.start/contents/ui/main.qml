@@ -6,6 +6,7 @@ import org.kde.plasma.plasmoid
 import org.kde.kirigami as Kirigami
 PlasmoidItem {
     id: root
+    readonly property string buttonIcon: root.Plasmoid.configuration.icon || ""
     preferredRepresentation: compactRepresentation
     // Keep the popup midpoint anchored to the Windows logo as tasks move.
     Item {
@@ -24,12 +25,13 @@ PlasmoidItem {
             if (popup && popup.visualParent !== undefined) popup.visualParent = centeredPopupAnchor;
         }
     }
-    Plasmoid.icon: "view-app-grid"
+    Plasmoid.icon: root.buttonIcon || "view-app-grid"
     compactRepresentation: Item {
         id: startButton
         Layout.minimumWidth: Kirigami.Units.iconSizes.medium
         Layout.minimumHeight: Kirigami.Units.iconSizes.medium
-        Rectangle { anchors.centerIn: parent; width: 24; height: 24; color: "transparent"
+        Kirigami.Icon { anchors.centerIn: parent; width: 24; height: 24; source: root.buttonIcon; visible: root.buttonIcon.length > 0 }
+        Rectangle { visible: root.buttonIcon.length === 0; anchors.centerIn: parent; width: 24; height: 24; color: "transparent"
             Grid { anchors.fill: parent; columns: 2; spacing: 2
                 Repeater { model: 4; Rectangle { width: 11; height: 11; radius: root.Plasmoid.configuration.look === "caelestia" ? 4 : 0; color: Kirigami.Theme.highlightColor } }
             }

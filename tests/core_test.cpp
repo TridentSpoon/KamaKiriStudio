@@ -12,6 +12,13 @@
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void launcherSettingsOnlyOpenTheSelectedWidgetsConfiguration() {
+        auto script=Studio::launcherSettingsScript(42);
+        QVERIFY(script.contains("panelById(42)"));QVERIFY(script.contains("showConfigurationInterface()"));
+        QVERIFY(script.contains("launchers.length>1"));QVERIFY(!script.contains("writeConfig"));QVERIFY(!script.contains("addWidget"));
+        QVERIFY_EXCEPTION_THROWN(Studio::launcherSettingsScript(-1),std::runtime_error);
+    }
+
     void personalWallpapersPersistAndStayWithTheirPreset() {
         QTemporaryDir source;QVERIFY(source.isValid());
         const auto oldData=qgetenv("XDG_DATA_HOME");qputenv("XDG_DATA_HOME",source.path().toUtf8());

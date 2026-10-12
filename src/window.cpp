@@ -13,6 +13,7 @@
 #include <QButtonGroup>
 #include <QCloseEvent>
 #include <QFileDialog>
+#include <QInputDialog>
 #include <QFileInfo>
 #include <QDir>
 #include <QRegularExpression>
@@ -175,6 +176,31 @@ QWidget *StudioWindow::appearancePage() {
     auto attribution=label("As seen in and inspired by Omarchy","subtitle");attribution->setObjectName("themeAttribution");attribution->setAlignment(Qt::AlignRight);v->addWidget(attribution);
     auto wallpaperApply=new QPushButton("Apply wallpaper");wallpaperApply->setObjectName("applyWallpaper");v->addWidget(wallpaperApply);
     connect(wallpaperApply,&QPushButton::clicked,this,[this]{if(busy)return;if(wallpaperPath.isEmpty()){error("Choose a wallpaper first.");return;}wallpaperOnly=true;beginTrial();wallpaperOnly=false;});
+    v->addWidget(label("Login screen and launcher","section"));
+    v->addWidget(label("Customise these separately. KDE asks for administrator authentication when login-screen changes need it. These settings are outside the appearance trial.","subtitle"));
+    auto personalisation=new QHBoxLayout;auto loginSettings=new QPushButton("Customise login screen…");loginSettings->setObjectName("loginScreenSettings");personalisation->addWidget(loginSettings);
+    auto launcherSettings=new QPushButton("Customise Launcher / Start button…");launcherSettings->setObjectName("launcherSettings");personalisation->addWidget(launcherSettings);v->addLayout(personalisation);
+    connect(loginSettings,&QPushButton::clicked,this,[this]{
+        if(busy||monitorChanging){error("Finish the current desktop operation before opening login-screen settings.");return;}
+        if(demoMode){notice->setText("Preview mode: KDE login-screen settings were not opened.");return;}
+        const auto tool=QStandardPaths::findExecutable("kcmshell6");
+        if(tool.isEmpty()){error("KDE settings tools are missing. Install your distribution’s KDE System Settings and SDDM settings package, then reopen KamaKiriStudio.");return;}
+        QProcess modules;modules.start(tool,{"--list"});
+        if(!modules.waitForFinished(3000)){modules.kill();modules.waitForFinished();error("KDE settings could not be checked. Complete system updates and restart your session, then retry.");return;}
+        const auto list=QString::fromUtf8(modules.readAllStandardOutput());
+        if(modules.exitCode()!=0||!QRegularExpression("(?:^|\\n)kcm_sddm\\s").match(list).hasMatch()){error("KDE’s Login Screen (SDDM) module is not available. Install your distribution’s sddm-kcm package (sometimes named sddm-kcm6), then retry. This option is for SDDM login screens.");return;}
+        if(!QProcess::startDetached(tool,{"kcm_sddm"}))error("KDE login-screen settings could not be opened. Try Login Screen (SDDM) in System Settings.");
+    });
+    connect(launcherSettings,&QPushButton::clicked,this,[this]{
+        if(busy||monitorChanging){error("Finish the current desktop operation before changing launcher settings.");return;}
+        if(demoMode){notice->setText("Preview mode: launcher settings were not opened.");return;}
+        QStringList choices;QList<int> ids;
+        for(int i=0;i<panelSelect->count();++i){choices.append(panelSelect->itemText(i));ids.append(panelSelect->itemData(i).toJsonObject()["id"].toInt());}
+        if(ids.isEmpty()){error("No Plasma panels are available. Refresh displays and try again.");return;}
+        int index=qMax(0,panelSelect->currentIndex());
+        if(ids.size()>1){bool accepted=false;const auto choice=QInputDialog::getItem(this,"Launcher settings","Choose the panel containing your launcher:",choices,index,false,&accepted);if(!accepted)return;index=choices.indexOf(choice);}
+        try {plasmaScript(launcherSettingsScript(ids[index]));notice->setText("Launcher settings opened. Use Apply in that window to save your choices.");}catch(const std::exception &e){error(QString::fromUtf8(e.what()));}
+    });
     auto advanced=new QPushButton("Advanced settings");advanced->setCheckable(true);v->addWidget(advanced);
     auto options=card();auto form=new QFormLayout(options);form->setContentsMargins(16,12,16,12);form->setVerticalSpacing(10);form->addRow(colorEnabled);form->addRow(themeWallpaperEnabled);
     accentButton=new QPushButton("Accent · #c4a7ff");
@@ -470,6 +496,9 @@ void StudioWindow::runUiCheck(const QString &path) {
         popupStyle->setCurrentIndex(0);popupStyle->setCurrentIndex(1);
         if(!styleSheet().isEmpty()||palette()!=QApplication::palette()||colorEnabled->isChecked()){QCoreApplication::exit(2);return;}
         popupStyle->setCurrentIndex(previousStyle);colorEnabled->setChecked(previousColors);
+        auto login=findChild<QPushButton*>("loginScreenSettings");auto launcher=findChild<QPushButton*>("launcherSettings");
+        if(!login||!launcher){QCoreApplication::exit(2);return;}
+        login->click();launcher->click();
         capture(path);beginTrial();
     });
     auto check=new QTimer(this);check->setInterval(100);auto elapsed=new QElapsedTimer;elapsed->start();

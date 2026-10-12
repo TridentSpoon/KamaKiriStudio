@@ -102,6 +102,15 @@ static void applyTheme(const QString &name) {
     if(process.exitStatus()!=QProcess::NormalExit||process.exitCode()!=0)bad("Plasma refused the desktop style.");
 }
 static void notifyLook(){notifyPalette();for(int type:{2,4}){auto change=QDBusMessage::createSignal("/KGlobalSettings","org.kde.KGlobalSettings","notifyChange");change<<type<<0;QDBusConnection::sessionBus().send(change);}QDBusConnection::sessionBus().send(QDBusMessage::createMethodCall("org.kde.KWin","/KWin","org.kde.KWin","reconfigure"));}
+QString launcherSettingsScript(int panelId) {
+    if(panelId<0)bad("Choose a valid panel.");
+    return QString(R"JS(try {var p=panelById(%1);if(!p)throw new Error('This panel is no longer available. Refresh displays and try again.');
+var types=['org.kamakiri.start','org.kde.plasma.kickoff','org.kde.plasma.kicker','org.kde.plasma.kickerdash'];
+var launchers=p.widgets().filter(function(w){return types.indexOf(w.type)>=0;});
+if(launchers.length===0)throw new Error('This panel has no launcher. Apply a desktop theme with a launcher first.');
+if(launchers.length>1)throw new Error('This panel has several launchers. Right-click the one you want and choose Configure.');
+launchers[0].showConfigurationInterface();print('STUDIO_OK');}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(panelId);
+}
 QString applyLookScript(int id,const QString &look,const QString &mode,const QString &owner) {
     if(id<0||!desktopLooks().contains(look)||!QStringList{"desktop","light","dark"}.contains(mode)||!QRegularExpression("^[a-f0-9-]{36}$").match(owner).hasMatch())bad("Invalid desktop look.");
     return QString(R"JS(try {var p=panelById(%1);if(!p)throw new Error('Panel unavailable');var look=%2;var mode=%3;var owner=%4;
@@ -111,6 +120,7 @@ var old=p.widgets();var start=add(look==='plasma'?'org.kde.plasma.kickoff':'org.
 var launcherTypes=['org.kde.plasma.kickoff','org.kde.plasma.kicker','org.kde.plasma.kickerdash','org.kamakiri.start'];var favorites=[];
 old.forEach(function(w){if(launcherTypes.indexOf(w.type)>=0){w.currentConfigGroup=['General'];var f=w.readConfig('favorites',[]);if(f&&f.length)favorites=f;}});
 if(favorites.length)start.writeConfig('favorites',favorites);
+var customStart=old.filter(function(w){return w.type==='org.kamakiri.start';})[0];if(customStart&&look!=='plasma'){customStart.currentConfigGroup=['General'];start.writeConfig('icon',customStart.readConfig('icon',''));}
 var tasks=p.widgets('org.kde.plasma.icontasks')[0]||p.widgets('org.kde.plasma.taskmanager')[0]||add('org.kde.plasma.icontasks');
 var tray=p.widgets('org.kde.plasma.systemtray')[0]||add('org.kde.plasma.systemtray');var clock=p.widgets('org.kde.plasma.digitalclock')[0]||add('org.kde.plasma.digitalclock');
 var notifications=fluent?(p.widgets('org.kde.plasma.notifications')[0]||add('org.kde.plasma.notifications')):null;
