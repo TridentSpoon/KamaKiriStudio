@@ -13,6 +13,7 @@
 #include <QButtonGroup>
 #include <QCloseEvent>
 #include <QFileDialog>
+#include <QInputDialog>
 #include <QFileInfo>
 #include <QDir>
 #include <QRegularExpression>
@@ -127,7 +128,7 @@ QWidget *StudioWindow::appearancePage() {
     v->addWidget(label("Choose your desktop layout and menus, then its colors and wallpaper.","subtitle"));
     lookSelect=new QComboBox;lookSelect->addItem("Keep current layout · customize colors","");lookSelect->addItem("Default Plasma · native KDE desktop","plasma");lookSelect->addItem("Kamakiri style · rounded menus and left rail","caelestia");lookSelect->addItem("Fluent 11 · Windows 11 layout","fluent11");lookSelect->addItem("Fluent 10 · Windows 10 layout","fluent10");
     QSettings savedLook;lookSelect->setCurrentIndex(qMax(0,lookSelect->findData(savedLook.value("desktop/look",""))));
-    v->addWidget(label("Desktop look","section"));v->addWidget(lookSelect);
+    v->addWidget(label("Theme","section"));v->addWidget(lookSelect);
     colorEnabled=new QCheckBox("Include KDE color changes in this trial");colorEnabled->setChecked(true);
     themeSelect=new QComboBox;
     themeSelect->addItem("Lavender","caelestia");
@@ -138,7 +139,7 @@ QWidget *StudioWindow::appearancePage() {
     for (const auto &value:omarchyPalettes()) {
         auto p=value.toObject(); themeSelect->addItem(p["name"].toString(),p["id"].toString());
     }
-    v->addWidget(label("Theme and wallpaper","section")); v->addWidget(themeSelect);
+    v->addWidget(label("Colours and wallpaper","section")); v->addWidget(themeSelect);
     themeWallpaperEnabled=new QCheckBox("Use the associated theme wallpaper");themeWallpaperEnabled->setChecked(true);connect(themeWallpaperEnabled,&QCheckBox::toggled,this,[this]{syncThemeWallpaper();});
     connect(themeSelect,&QComboBox::currentIndexChanged,this,[this]{choosePreset(themeSelect->currentData().toString());});
     preview=new DesktopPreview;v->addWidget(preview);
@@ -154,11 +155,52 @@ QWidget *StudioWindow::appearancePage() {
     auto monitorRoot=new QWidget;monitorLayout=new QVBoxLayout(monitorRoot);monitorLayout->setContentsMargins(0,0,0,0);v->addWidget(monitorRoot);
     v->addWidget(label("Wallpaper placement","section"));appearanceScope=new QComboBox;appearanceScope->setObjectName("appearanceWallpaperScope");v->addWidget(appearanceScope);
     appearanceDisplay=new QComboBox;appearanceDisplay->setObjectName("appearanceWallpaperDisplay");v->addWidget(appearanceDisplay);
-    v->addWidget(label("Theme wallpapers","section"));appearanceGallery=new WallpaperGallery;v->addWidget(appearanceGallery);
+    v->addWidget(label("Wallpapers","section"));
+    wallpaperGroup=new QComboBox;wallpaperGroup->setObjectName("wallpaperGroup");wallpaperGroup->addItem("Current colours · matching wallpapers",QString());
+    for(int i=0;i<themeSelect->count();++i)if(themeSelect->itemData(i).toString()!="wallpaper")wallpaperGroup->addItem(themeSelect->itemText(i),themeSelect->itemData(i));
+    wallpaperGroup->setToolTip("Browse another colour preset’s wallpaper variants without changing your theme or colours.");v->addWidget(wallpaperGroup);
+    connect(wallpaperGroup,&QComboBox::currentIndexChanged,this,[this]{refreshWallpaperGallery();});
+    appearanceGallery=new WallpaperGallery;v->addWidget(appearanceGallery);
     appearanceGallery->onSelected=[this](const QString &path){if(!busy)selectWallpaper(path,false);};
+    auto addWallpapers=new QPushButton("Add your own wallpapers…");addWallpapers->setObjectName("addThemeWallpapers");v->addWidget(addWallpapers);
+    connect(addWallpapers,&QPushButton::clicked,this,[this]{
+        if(busy){error("Finish the current trial before adding wallpapers.");return;}
+        const auto target=wallpaperGroup->currentData().toString().isEmpty()?preset:wallpaperGroup->currentData().toString();
+        const auto paths=QFileDialog::getOpenFileNames(this,"Add wallpapers to this colour preset",QStandardPaths::writableLocation(QStandardPaths::PicturesLocation),"Images (*.png *.jpg *.jpeg *.webp *.bmp)");
+        if(paths.isEmpty())return;
+        QString first;QStringList failures;int added=0;
+        for(const auto &path:paths)try {const auto saved=addThemeWallpaper(target,path);if(first.isEmpty())first=saved;++added;}catch(const std::exception &e){failures.append(QFileInfo(path).fileName()+": "+QString::fromUtf8(e.what()));}
+        refreshWallpaperGallery();if(!first.isEmpty())selectWallpaper(first,false);
+        if(!failures.isEmpty())error(failures.join("\n"));else notice->setText(QString("%1 wallpaper(s) saved to this colour preset. Choose Apply wallpaper to try your selection.").arg(added));
+    });
     auto attribution=label("As seen in and inspired by Omarchy","subtitle");attribution->setObjectName("themeAttribution");attribution->setAlignment(Qt::AlignRight);v->addWidget(attribution);
     auto wallpaperApply=new QPushButton("Apply wallpaper");wallpaperApply->setObjectName("applyWallpaper");v->addWidget(wallpaperApply);
     connect(wallpaperApply,&QPushButton::clicked,this,[this]{if(busy)return;if(wallpaperPath.isEmpty()){error("Choose a wallpaper first.");return;}wallpaperOnly=true;beginTrial();wallpaperOnly=false;});
+    v->addWidget(label("Login screen and launcher","section"));
+    v->addWidget(label("Customise these separately. KDE asks for administrator authentication when login-screen changes need it. These settings are outside the appearance trial.","subtitle"));
+    auto personalisation=new QHBoxLayout;auto loginSettings=new QPushButton("Customise login screen…");loginSettings->setObjectName("loginScreenSettings");personalisation->addWidget(loginSettings);
+    auto launcherSettings=new QPushButton("Customise Launcher / Start button…");launcherSettings->setObjectName("launcherSettings");personalisation->addWidget(launcherSettings);v->addLayout(personalisation);
+    connect(loginSettings,&QPushButton::clicked,this,[this]{
+        if(busy||monitorChanging){error("Finish the current desktop operation before opening login-screen settings.");return;}
+        if(demoMode){notice->setText("Preview mode: KDE login-screen settings were not opened.");return;}
+        const auto tool=QStandardPaths::findExecutable("kcmshell6");
+        if(tool.isEmpty()){error("KDE settings tools are missing. Install your distribution’s KDE System Settings and SDDM settings package, then reopen KamaKiriStudio.");return;}
+        QProcess modules;modules.start(tool,{"--list"});
+        if(!modules.waitForFinished(3000)){modules.kill();modules.waitForFinished();error("KDE settings could not be checked. Complete system updates and restart your session, then retry.");return;}
+        const auto list=QString::fromUtf8(modules.readAllStandardOutput());
+        if(modules.exitCode()!=0||!QRegularExpression("(?:^|\\n)kcm_sddm\\s").match(list).hasMatch()){error("KDE’s Login Screen (SDDM) module is not available. Install your distribution’s sddm-kcm package (sometimes named sddm-kcm6), then retry. This option is for SDDM login screens.");return;}
+        if(!QProcess::startDetached(tool,{"kcm_sddm"}))error("KDE login-screen settings could not be opened. Try Login Screen (SDDM) in System Settings.");
+    });
+    connect(launcherSettings,&QPushButton::clicked,this,[this]{
+        if(busy||monitorChanging){error("Finish the current desktop operation before changing launcher settings.");return;}
+        if(demoMode){notice->setText("Preview mode: launcher settings were not opened.");return;}
+        QStringList choices;QList<int> ids;
+        for(int i=0;i<panelSelect->count();++i){choices.append(panelSelect->itemText(i));ids.append(panelSelect->itemData(i).toJsonObject()["id"].toInt());}
+        if(ids.isEmpty()){error("No Plasma panels are available. Refresh displays and try again.");return;}
+        int index=qMax(0,panelSelect->currentIndex());
+        if(ids.size()>1){bool accepted=false;const auto choice=QInputDialog::getItem(this,"Launcher settings","Choose the panel containing your launcher:",choices,index,false,&accepted);if(!accepted)return;index=choices.indexOf(choice);}
+        try {plasmaScript(launcherSettingsScript(ids[index]));notice->setText("Launcher settings opened. Use Apply in that window to save your choices.");}catch(const std::exception &e){error(QString::fromUtf8(e.what()));}
+    });
     auto advanced=new QPushButton("Advanced settings");advanced->setCheckable(true);v->addWidget(advanced);
     auto options=card();auto form=new QFormLayout(options);form->setContentsMargins(16,12,16,12);form->setVerticalSpacing(10);form->addRow(colorEnabled);form->addRow(themeWallpaperEnabled);
     accentButton=new QPushButton("Accent · #c4a7ff");
@@ -454,6 +496,9 @@ void StudioWindow::runUiCheck(const QString &path) {
         popupStyle->setCurrentIndex(0);popupStyle->setCurrentIndex(1);
         if(!styleSheet().isEmpty()||palette()!=QApplication::palette()||colorEnabled->isChecked()){QCoreApplication::exit(2);return;}
         popupStyle->setCurrentIndex(previousStyle);colorEnabled->setChecked(previousColors);
+        auto login=findChild<QPushButton*>("loginScreenSettings");auto launcher=findChild<QPushButton*>("launcherSettings");
+        if(!login||!launcher){QCoreApplication::exit(2);return;}
+        login->click();launcher->click();
         capture(path);beginTrial();
     });
     auto check=new QTimer(this);check->setInterval(100);auto elapsed=new QElapsedTimer;elapsed->start();

@@ -15,6 +15,11 @@
 #include <stdexcept>
 #include <algorithm>
 #include <QThread>
+#include <QDir>
+#include <QFile>
+#include <QSaveFile>
+#include <QImageReader>
+#include <QCryptographicHash>
 namespace Studio {
 static void bad(const QString &s){throw std::runtime_error(s.toStdString());}
 QJsonObject desktopPalette(const QString &preset,const QString &mode) {
@@ -28,12 +33,39 @@ QJsonObject desktopPalette(const QString &preset,const QString &mode) {
     return p;
 }
 QStringList desktopLooks(){return {"plasma","caelestia","fluent11","fluent10"};}
+static QString personalWallpaperDirectory(const QString &preset) {
+    if(!QRegularExpression("^[a-zA-Z0-9_-]{1,80}$").match(preset).hasMatch())bad("Invalid colour preset.");
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)+"/wallpapers/"+preset;
+}
+QString addThemeWallpaper(const QString &preset,const QString &source) {
+    loadWallpaper(source);
+    QFile input(source);
+    if(!input.open(QIODevice::ReadOnly))bad("Cannot read the selected wallpaper.");
+    const auto bytes=input.read(50*1024*1024+1);
+    if(bytes.size()>50*1024*1024||input.error()!=QFileDevice::NoError)bad("Cannot read a wallpaper smaller than 50 MB.");
+    const auto directory=personalWallpaperDirectory(preset);
+    if(!QDir().mkpath(directory))bad("Cannot create your wallpaper gallery.");
+    const auto path=directory+"/"+QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex())+"."+QString::fromLatin1(QImageReader(source).format().toLower());
+    if(!QFileInfo::exists(path)) {
+        QSaveFile output(path);
+        if(!output.open(QIODevice::WriteOnly)||output.write(bytes)!=bytes.size()||!output.commit())bad("Cannot save your wallpaper.");
+        try {loadWallpaper(path);}catch(...) {QFile::remove(path);throw;}
+    } else loadWallpaper(path);
+    return path;
+}
 QStringList themeWallpapers(const QString &preset) {
     QString catalog=QStringLiteral(STUDIO_ASSET_DIRECTORY)+"/wallpapers/catalog.json";
     if(!QFileInfo::exists(catalog))catalog=QStandardPaths::locate(QStandardPaths::GenericDataLocation,"kamakiri-studio/wallpapers/catalog.json");
-    if(catalog.isEmpty())return {};
-    QJsonValue value=readJson(catalog).value(preset);QJsonArray names=value.isArray()?value.toArray():QJsonArray{value};QStringList result;
+
+    QJsonValue value=catalog.isEmpty()?QJsonValue():readJson(catalog).value(preset);QJsonArray names=value.isArray()?value.toArray():QJsonArray{value};QStringList result;
     for(const auto &nameValue:names){auto name=nameValue.toString();if(name.isEmpty()||name.contains('/')||name.contains(".."))continue;auto path=QFileInfo(catalog).absolutePath()+"/"+name;if(QFileInfo(path).isFile())result.append(path);}
+    if(QRegularExpression("^[a-zA-Z0-9_-]{1,80}$").match(preset).hasMatch()) {
+        QDir personal(personalWallpaperDirectory(preset));
+        for(const auto &name:personal.entryList({"*.png","*.jpeg","*.jpg","*.webp","*.bmp"},QDir::Files,QDir::Name)) {
+            const auto path=personal.absoluteFilePath(name);
+            try {loadWallpaper(path);result.append(path);}catch(const std::exception &) { /* Ignore damaged personal images. */ }
+        }
+    }
     return result;
 }
 QString associatedWallpaper(const QString &preset){auto paths=themeWallpapers(preset);return paths.isEmpty()?QString():paths.first();}
@@ -70,6 +102,15 @@ static void applyTheme(const QString &name) {
     if(process.exitStatus()!=QProcess::NormalExit||process.exitCode()!=0)bad("Plasma refused the desktop style.");
 }
 static void notifyLook(){notifyPalette();for(int type:{2,4}){auto change=QDBusMessage::createSignal("/KGlobalSettings","org.kde.KGlobalSettings","notifyChange");change<<type<<0;QDBusConnection::sessionBus().send(change);}QDBusConnection::sessionBus().send(QDBusMessage::createMethodCall("org.kde.KWin","/KWin","org.kde.KWin","reconfigure"));}
+QString launcherSettingsScript(int panelId) {
+    if(panelId<0)bad("Choose a valid panel.");
+    return QString(R"JS(try {var p=panelById(%1);if(!p)throw new Error('This panel is no longer available. Refresh displays and try again.');
+var types=['org.kamakiri.start','org.kde.plasma.kickoff','org.kde.plasma.kicker','org.kde.plasma.kickerdash'];
+var launchers=p.widgets().filter(function(w){return types.indexOf(w.type)>=0;});
+if(launchers.length===0)throw new Error('This panel has no launcher. Apply a desktop theme with a launcher first.');
+if(launchers.length>1)throw new Error('This panel has several launchers. Right-click the one you want and choose Configure.');
+launchers[0].showConfigurationInterface();print('STUDIO_OK');}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(panelId);
+}
 QString applyLookScript(int id,const QString &look,const QString &mode,const QString &owner) {
     if(id<0||!desktopLooks().contains(look)||!QStringList{"desktop","light","dark"}.contains(mode)||!QRegularExpression("^[a-f0-9-]{36}$").match(owner).hasMatch())bad("Invalid desktop look.");
     return QString(R"JS(try {var p=panelById(%1);if(!p)throw new Error('Panel unavailable');var look=%2;var mode=%3;var owner=%4;
@@ -79,6 +120,7 @@ var old=p.widgets();var start=add(look==='plasma'?'org.kde.plasma.kickoff':'org.
 var launcherTypes=['org.kde.plasma.kickoff','org.kde.plasma.kicker','org.kde.plasma.kickerdash','org.kamakiri.start'];var favorites=[];
 old.forEach(function(w){if(launcherTypes.indexOf(w.type)>=0){w.currentConfigGroup=['General'];var f=w.readConfig('favorites',[]);if(f&&f.length)favorites=f;}});
 if(favorites.length)start.writeConfig('favorites',favorites);
+var customStart=old.filter(function(w){return w.type==='org.kamakiri.start';})[0];if(customStart&&look!=='plasma'){customStart.currentConfigGroup=['General'];start.writeConfig('icon',customStart.readConfig('icon',''));}
 var tasks=p.widgets('org.kde.plasma.icontasks')[0]||p.widgets('org.kde.plasma.taskmanager')[0]||add('org.kde.plasma.icontasks');
 var tray=p.widgets('org.kde.plasma.systemtray')[0]||add('org.kde.plasma.systemtray');var clock=p.widgets('org.kde.plasma.digitalclock')[0]||add('org.kde.plasma.digitalclock');
 var notifications=fluent?(p.widgets('org.kde.plasma.notifications')[0]||add('org.kde.plasma.notifications')):null;

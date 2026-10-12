@@ -1,14 +1,78 @@
 // SPDX-License-Identifier: MIT
 #include "core.h"
+#include "plugin_checks.h"
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QFile>
+#include <QStandardPaths>
+#include <QUuid>
 #include <KConfig>
 #include <KConfigGroup>
 
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void launcherSettingsOnlyOpenTheSelectedWidgetsConfiguration() {
+        auto script=Studio::launcherSettingsScript(42);
+        QVERIFY(script.contains("panelById(42)"));QVERIFY(script.contains("showConfigurationInterface()"));
+        QVERIFY(script.contains("launchers.length>1"));QVERIFY(!script.contains("writeConfig"));QVERIFY(!script.contains("addWidget"));
+        QVERIFY_EXCEPTION_THROWN(Studio::launcherSettingsScript(-1),std::runtime_error);
+    }
+
+    void personalWallpapersPersistAndStayWithTheirPreset() {
+        QTemporaryDir source;QVERIFY(source.isValid());
+        const auto oldData=qgetenv("XDG_DATA_HOME");qputenv("XDG_DATA_HOME",source.path().toUtf8());
+        const QString preset="test-personal-"+QUuid::createUuid().toString(QUuid::Id128);
+        const auto original=source.filePath("picture.png");QImage image(32,32,QImage::Format_RGB32);image.fill(Qt::red);QVERIFY(image.save(original));
+        const auto saved=Studio::addThemeWallpaper(preset,original);
+        QCOMPARE(Studio::addThemeWallpaper(preset,original),saved);
+        QVERIFY(QFile::remove(original));QCOMPARE(Studio::themeWallpapers(preset),QStringList{saved});
+        QVERIFY(!Studio::themeWallpapers("caelestia").contains(saved));
+        QVERIFY_EXCEPTION_THROWN(Studio::addThemeWallpaper("../escape",saved),std::runtime_error);
+        QFile invalid(source.filePath("invalid.png"));QVERIFY(invalid.open(QIODevice::WriteOnly));invalid.write("invalid");invalid.close();
+        QVERIFY_EXCEPTION_THROWN(Studio::addThemeWallpaper(preset,invalid.fileName()),std::runtime_error);
+        QVERIFY(QFile::remove(saved));
+        if(oldData.isNull())qunsetenv("XDG_DATA_HOME");else qputenv("XDG_DATA_HOME",oldData);
+    }
+
+    void compatibilityIncludesNewLayoutAndRollbackPlugins() {
+        QJsonObject icon{{"id",1},{"type","org.kde.plasma.icon"}};
+        QJsonObject tray{{"id",2},{"type","org.kde.plasma.systemtray"},{"config",QJsonObject{{"entries",QJsonObject{{"plugin","org.kde.plasma.volume"}}}}}};
+        QJsonObject snapshot{{"desktopLooksBefore",QJsonArray{QJsonObject{{"panel",QJsonObject{{"widgets",QJsonArray{icon,tray}}}}}}}};
+        auto plugins=Studio::trialPluginRequirements(QJsonObject{{"desktopLook","fluent11"}},snapshot);
+        QVERIFY(plugins.contains("org.kamakiri.start"));QVERIFY(plugins.contains("org.kde.plasma.icon"));
+        QVERIFY(plugins.contains("org.kde.plasma.volume"));QVERIFY(plugins.contains("org.kde.plasma.showdesktop"));
+        auto recovery=Studio::recoveryPluginRequirements(snapshot);
+        QVERIFY(recovery.contains("org.kde.plasma.icon"));QVERIFY(!recovery.contains("org.kamakiri.start"));
+        QVERIFY(Studio::trialPluginRequirements(QJsonObject{{"panelPopupActions",true}},{}).contains("org.kde.plasma.icon"));
+        QVERIFY(Studio::trialPluginRequirements(QJsonObject{{"createPanels",QJsonArray{QJsonObject{{"screen",1}}}}},{}).contains("org.kde.plasma.kickoff"));
+    }
+    void compatibilityCoversRemovedPanelsAndLegacyWallpaperSnapshots() {
+        QJsonObject snapshot{{"removedPanelsBefore",QJsonArray{QJsonObject{{"panel",QJsonObject{{"widgets",QJsonArray{QJsonObject{{"id",5},{"type","org.kde.plasma.kicker"}}}}}}}}},{"changeWallpaper",true},{"desktop",QJsonObject{{"plugin","org.kde.image"}}}};
+        auto required=Studio::recoveryPluginRequirements(snapshot);
+        QVERIFY(required.contains("org.kde.plasma.kicker"));QVERIFY(required.contains("containment:org.kde.panel"));QVERIFY(required.contains("wallpaper:org.kde.image"));
+    }
+    void runningPlasmaMustUseCurrentQtLibraries() {
+        const QString core="1000-2000 r-xp 0000 08:01 100 /usr/lib/libQt6Core.so.6.11.2\n";
+        Studio::validatePlasmaRuntimeMaps(core,core,false);
+        QVERIFY_EXCEPTION_THROWN(Studio::validatePlasmaRuntimeMaps(core,QString(core).replace(" 100 "," 101 "),false),std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(Studio::validatePlasmaRuntimeMaps(QString(core).replace(".2\n",".2 (deleted)\n"),core,false),std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(Studio::validatePlasmaRuntimeMaps("",core,false),std::runtime_error);
+    }
+    void changedKdeLibrariesAreDetectedBeforeMutation() {
+        QTemporaryDir directory;QVERIFY(directory.isValid());
+        QString path=directory.filePath("libQt6Core.so.6");QFile file(path);QVERIFY(file.open(QIODevice::WriteOnly));file.write("fixture");file.close();
+        const auto map=QString("1000-2000 r-xp 0000 00:00 999 %1\n").arg(path);
+        QVERIFY_EXCEPTION_THROWN(Studio::plasmaLibraryIdentities(map,true),std::runtime_error);
+    }
+    void pluginProbeRejectsUnresolvedImportsWithoutCreatingObjects() {
+        QTemporaryDir directory;QVERIFY(directory.isValid());QFile qml(directory.filePath("main.qml"));
+        QVERIFY(qml.open(QIODevice::WriteOnly));qml.write("import QtQml\nQtObject { Component.onCompleted: { throw new Error('must not instantiate') } }\n");qml.close();
+        QString problem;QVERIFY2(Studio::compilePluginQml(qml.fileName(),&problem),qPrintable(problem));
+        QVERIFY(qml.open(QIODevice::WriteOnly|QIODevice::Truncate));qml.write("import Not.Installed.Plugin 99.0\nQtObject {}\n");qml.close();
+        QVERIFY(!Studio::compilePluginQml(qml.fileName(),&problem));QVERIFY(problem.contains("Not.Installed.Plugin"));
+    }
+
     void primaryMonitorFollowsKdePriorityRatherThanScreenOrder() {
         QJsonObject a{{"id",2},{"name","HDMI-A-1"},{"enabled",true},{"connected",true},{"priority",1},{"pos",QJsonObject{{"x",1200},{"y",1080}}}};
         auto wacom=a;wacom["id"]=3;wacom["name"]="DP-1";wacom["priority"]=2;wacom["pos"]=QJsonObject{{"x",0},{"y",224}};
@@ -99,7 +163,7 @@ private slots:
     void wallpaperCatalogContainsEveryThemeImage() {
         QStringList ids{"caelestia","ryoku","windows","breeze"};
         for(const auto &entry:Studio::omarchyPalettes())ids.append(entry.toObject()["id"].toString());
-        for(const auto &id:ids){auto paths=Studio::themeWallpapers(id);QCOMPARE(paths.size(),id=="omarchy-retro-82"?8:id=="omarchy-tokyo-night"?7:5);QCOMPARE(Studio::associatedWallpaper(id),paths.first());for(const auto &path:paths)QVERIFY(!Studio::loadWallpaper(path).isNull());}
+        for(const auto &id:ids){auto paths=Studio::themeWallpapers(id);QCOMPARE(paths.size(),id=="omarchy-retro-82"?8:id=="omarchy-tokyo-night"?7:id=="omarchy-catppuccin"?9:5);QCOMPARE(Studio::associatedWallpaper(id),paths.first());for(const auto &path:paths)QVERIFY(!Studio::loadWallpaper(path).isNull());}
         QVERIFY(Studio::themeWallpapers("missing-theme").isEmpty());
         for(const auto &id:{"omarchy-rose-pine","omarchy-lumon"})for(const auto &path:Studio::themeWallpapers(id)){QVERIFY(!path.contains("omarchy-plants"));QVERIFY(!path.contains("opinions-equally"));}
 
