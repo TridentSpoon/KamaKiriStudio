@@ -70,6 +70,15 @@ private slots:
         QVERIFY_EXCEPTION_THROWN(Studio::validatePlasmaRuntimeMaps(QString(core).replace(".2\n",".2 (deleted)\n"),core,false),std::runtime_error);
         QVERIFY_EXCEPTION_THROWN(Studio::validatePlasmaRuntimeMaps("",core,false),std::runtime_error);
     }
+    void btrfsSubvolumeDevicesDoNotCauseFalseCompatibilityBlocks() {
+        const QString mounts="1 0 0:33 /@ / rw - btrfs /dev/test rw\n2 1 8:1 / /media rw - ext4 /dev/other rw\n";
+        QVERIFY(Studio::btrfsMappingDeviceMatches("/usr/lib/qt6/plugins/imageformats/kimg_xcf.so","0:33",mounts));
+        QVERIFY(!Studio::btrfsMappingDeviceMatches("/usr/lib/test.so","0:99",mounts));
+        QVERIFY(!Studio::btrfsMappingDeviceMatches("/media/test.so","0:33",mounts));
+        QVERIFY(Studio::btrfsMappingDeviceMatches("/media-other/test.so","0:33",mounts));
+        QVERIFY(!Studio::btrfsMappingDeviceMatches("/usr/lib/test.so","0:33",""));
+        QVERIFY(Studio::btrfsMappingDeviceMatches("/path with space/test.so","0:44",mounts+"3 1 0:44 /@other /path\\040with\\040space rw - btrfs /dev/test rw\n"));
+    }
     void changedKdeLibrariesAreDetectedBeforeMutation() {
         QTemporaryDir directory;QVERIFY(directory.isValid());
         QString path=directory.filePath("libQt6Core.so.6");QFile file(path);QVERIFY(file.open(QIODevice::WriteOnly));file.write("fixture");file.close();

@@ -69,8 +69,23 @@ QStringList trialPluginRequirements(const QJsonObject &request,const QJsonObject
     }
     auto list=result.values();list.sort();return list;
 }
+// Btrfs exposes a per-subvolume st_dev, while /proc/maps uses the
+// superblock device from mountinfo. Only accept that specific alternate ID.
+bool btrfsMappingDeviceMatches(const QString &path,const QString &device,const QString &mountInfo) {
+    QString bestDevice,bestType;int bestLength=-1;
+    for(const auto &line:mountInfo.split('\n')){
+        auto parts=line.split(" - ");if(parts.size()!=2)continue;
+        auto fields=parts[0].split(' '),tail=parts[1].split(' ');if(fields.size()<6||tail.isEmpty())continue;
+        QString mount=fields[4];mount.replace("\\040"," ");mount.replace("\\011","\t");mount.replace("\\012","\n");mount.replace("\\134","\\");
+        if(path!=mount&&!path.startsWith(mount=="/"?"/":mount+"/"))continue;
+        if(mount.size()<bestLength)continue;
+        bestLength=mount.size();bestDevice=fields[2];bestType=tail[0];
+    }
+    return bestType=="btrfs"&&bestDevice==device;
+}
 QMap<QString,QString> plasmaLibraryIdentities(const QString &maps,bool verifyFiles) {
     QMap<QString,QString> libraries;
+    QString mountInfo;if(verifyFiles){QFile mounts("/proc/self/mountinfo");if(mounts.open(QIODevice::ReadOnly))mountInfo=QString::fromUtf8(mounts.readAll());}
     const QRegularExpression line("^[0-9a-f]+-[0-9a-f]+\\s+\\S+\\s+[0-9a-f]+\\s+([0-9a-f]+):([0-9a-f]+)\\s+(\\d+)\\s+(.+)$");
     for(const auto &entry:maps.split('\n')){
         auto match=line.match(entry);if(!match.hasMatch())continue;
@@ -78,7 +93,11 @@ QMap<QString,QString> plasmaLibraryIdentities(const QString &maps,bool verifyFil
         if(!name.startsWith("libQt6")&&!name.startsWith("libKF6")&&!name.startsWith("libPlasma")&&!name.startsWith("libKirigami")&&!name.startsWith("libKScreen")&&!name.startsWith("libLayerShellQt")&&!path.contains("/qt6/qml/")&&!path.contains("/qt6/plugins/"))continue;
         if(path.endsWith(" (deleted)"))blocked("Plasma still has an older library loaded: "+name+". A session restart is required.");
         if(verifyFiles){struct stat info;auto bytes=QFile::encodeName(path);
-            if(stat(bytes.constData(),&info)!=0||qulonglong(info.st_ino)!=match.captured(3).toULongLong()||major(info.st_dev)!=match.captured(1).toUInt(nullptr,16)||minor(info.st_dev)!=match.captured(2).toUInt(nullptr,16))
+            if(stat(bytes.constData(),&info)!=0||qulonglong(info.st_ino)!=match.captured(3).toULongLong())
+                blocked("The installed library differs from the one loaded by Plasma: "+name+".");
+            const auto mappedMajor=match.captured(1).toUInt(nullptr,16),mappedMinor=match.captured(2).toUInt(nullptr,16);
+            const bool sameDevice=major(info.st_dev)==mappedMajor&&minor(info.st_dev)==mappedMinor;
+            if(!sameDevice&&!btrfsMappingDeviceMatches(QFileInfo(path).canonicalFilePath(),QString::number(mappedMajor)+":"+QString::number(mappedMinor),mountInfo))
                 blocked("The installed library differs from the one loaded by Plasma: "+name+".");
         }
         libraries[path]=match.captured(1)+":"+match.captured(2)+":"+match.captured(3);
