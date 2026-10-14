@@ -12,6 +12,17 @@
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void oxygenGlowFollowsAccentAndRestoresOnlyItsOwnKeys() {
+        QTemporaryDir directory;const auto path=directory.filePath("oxygenrc");
+        {KConfig c(path,KConfig::SimpleConfig);auto g=c.group("ActiveShadow");g.writeEntry("InnerColor",QString("18,52,86"));g.writeEntry("UseAccentColor",false);g.writeEntry("ShadowSize",52);c.group("InactiveShadow").writeEntry("OuterColor",QString("32,32,32"));QVERIFY(c.sync());}
+        const auto before=Studio::snapshotOxygenGlow(path);
+        Studio::applyOxygenGlow(QColor("#509475"),path);
+        {KConfig c(path,KConfig::SimpleConfig);auto g=c.group("ActiveShadow");QCOMPARE(g.readEntry("OuterColor",QString()),QString("80,148,117"));QVERIFY(g.readEntry("UseAccentColor",false));QCOMPARE(g.readEntry("ShadowSize",0),52);g.writeEntry("ShadowSize",60);QVERIFY(c.sync());}
+        Studio::restoreOxygenGlow(before,path);QCOMPARE(Studio::snapshotOxygenGlow(path),before);
+        {KConfig c(path,KConfig::SimpleConfig);QCOMPARE(c.group("ActiveShadow").readEntry("ShadowSize",0),60);QVERIFY(!c.group("ActiveShadow").hasKey("OuterColor"));QCOMPARE(c.group("InactiveShadow").readEntry("OuterColor",QString()),QString("32,32,32"));}
+        QVERIFY_EXCEPTION_THROWN(Studio::applyOxygenGlow(QColor(),path),std::runtime_error);
+    }
+
     void launcherSettingsOnlyOpenTheSelectedWidgetsConfiguration() {
         auto script=Studio::launcherSettingsScript(42);
         QVERIFY(script.contains("panelById(42)"));QVERIFY(script.contains("showConfigurationInterface()"));

@@ -59,6 +59,9 @@ void validateRequest(const QJsonObject &request);
 void restoreColors(const QString &backup, const QString &destination);
 QString makeScheme(const QJsonObject &request, const QString &id);
 void notifyPalette();
+QJsonObject snapshotOxygenGlow(const QString &file="oxygenrc");
+void applyOxygenGlow(const QColor &accent,const QString &file="oxygenrc");
+void restoreOxygenGlow(const QJsonObject &before,const QString &file="oxygenrc");
 QJsonObject inspect();
 
 // Pure decision logic, driven by monotonic elapsed time; no visible countdown.
