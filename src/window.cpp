@@ -15,6 +15,7 @@
 #include <QCloseEvent>
 #include <QFileDialog>
 #include <QInputDialog>
+#include <QMouseEvent>
 #include <QFileInfo>
 #include <QDir>
 #include <QRegularExpression>
@@ -184,7 +185,16 @@ QWidget *StudioWindow::appearancePage() {
     auto attribution=label("As seen in and inspired by Omarchy","subtitle");attribution->setObjectName("themeAttribution");attribution->setAlignment(Qt::AlignRight);v->addWidget(attribution);
     auto wallpaperApply=new QPushButton("Apply wallpaper");wallpaperApply->setObjectName("applyWallpaper");v->addWidget(wallpaperApply);
     connect(wallpaperApply,&QPushButton::clicked,this,[this]{if(busy)return;if(wallpaperPath.isEmpty()){error("Choose a wallpaper first.");return;}wallpaperOnly=true;beginTrial();wallpaperOnly=false;});
-    v->addWidget(label("Login screen and launcher","section"));
+    v->addWidget(label("Launcher / Start button icon","section"));
+    v->addWidget(label("Choose a hexagon, then use Apply & try. Available for Kamakiri and Fluent launchers; Default Plasma uses its own launcher settings.","subtitle"));
+    QString distroName="Distribution",distroIcon="start-here";QFile release("/etc/os-release");
+    if(release.open(QIODevice::ReadOnly))for(const auto &line:QString::fromUtf8(release.readAll()).split('\n')){auto value=line.section('=',1).trimmed();if(value.startsWith('"')&&value.endsWith('"'))value=value.mid(1,value.size()-2);if(line.startsWith("PRETTY_NAME="))distroName=value;if(line.startsWith("LOGO="))distroIcon=value;}
+    const auto originalDistro="/usr/share/icons/"+distroIcon+".svg";if(QFileInfo::exists(originalDistro))distroIcon=originalDistro;
+    const auto kdeLogo=QStandardPaths::locate(QStandardPaths::GenericDataLocation,"plasma/plasmoids/org.kamakiri.start/contents/ui/icons/kde.svg");
+    startIconGallery=new WallpaperGallery;startIconGallery->setObjectName("startIconGallery");startIconGallery->setIcons({"kamakiri-windows",distroIcon,kdeLogo.isEmpty()?"start-here-kde":kdeLogo,"view-grid","application-menu","computer","system-run","go-home"},{"Windows",distroName,"KDE","App grid","Menu","Computer","Launch","Home"});v->addWidget(startIconGallery);
+    auto enableIcons=[this]{startIconGallery->setEnabled(QStringList{"caelestia","fluent11","fluent10"}.contains(lookSelect->currentData().toString()));};enableIcons();connect(lookSelect,&QComboBox::currentIndexChanged,this,enableIcons);
+    startIconGallery->onSelected=[this](const QString &icon){selectedStartIcon=icon;startIconChanged=true;notice->setText("Start icon selected. Use Apply & try to test it with your layout.");};
+    v->addWidget(label("Login screen and additional launcher settings","section"));
     v->addWidget(label("Customise these separately. KDE asks for administrator authentication when login-screen changes need it. These settings are outside the appearance trial.","subtitle"));
     auto personalisation=new QHBoxLayout;auto loginSettings=new QPushButton("Customise login screen…");loginSettings->setObjectName("loginScreenSettings");personalisation->addWidget(loginSettings);
     auto launcherSettings=new QPushButton("Customise Launcher / Start button…");launcherSettings->setObjectName("launcherSettings");personalisation->addWidget(launcherSettings);v->addLayout(personalisation);
@@ -363,6 +373,7 @@ QJsonObject StudioWindow::desired() const {
         }
         result["desktopFrame"]=frame;
     }
+    if(!wallpaperOnly&&startIconChanged&&QStringList{"caelestia","fluent11","fluent10"}.contains(result["desktopLook"].toString()))result["startIcon"]=selectedStartIcon;
     if(wallpaperOnly){result["changeWallpaper"]=true;result["changeColors"]=false;result["changePanel"]=false;result["panels"]=QJsonArray{};result["removePanelIds"]=QJsonArray{};result["createPanels"]=QJsonArray{};result["desktopLook"]="";result["changePopupLook"]=false;result["panelPopupActions"]=false;result["widgets"]=QJsonArray{};}
     return result;
 }
@@ -497,6 +508,9 @@ void StudioWindow::recoverPending() {
     }
 }
 void StudioWindow::showPreviewPage(const QString &name) {
+    if(name=="launcher-icons"){
+        pages->setCurrentIndex(0);QTimer::singleShot(0,this,[this]{for(auto parent=startIconGallery->parentWidget();parent;parent=parent->parentWidget())if(auto scroll=qobject_cast<QScrollArea*>(parent)){scroll->ensureWidgetVisible(startIconGallery,0,24);break;}});return;
+    }
     QStringList names{"appearance","recovery","about"};
     int i=names.indexOf(name=="desktop"?"appearance":name);if(i>=0)pages->setCurrentIndex(i);if(name=="about")checkLocalUpdate();
 }
@@ -516,6 +530,10 @@ void StudioWindow::runUiCheck(const QString &path) {
         auto login=findChild<QPushButton*>("loginScreenSettings");auto launcher=findChild<QPushButton*>("launcherSettings");
         if(!login||!launcher){QCoreApplication::exit(2);return;}
         login->click();launcher->click();
+        if(startIconGallery->isEnabled()){
+            QMouseEvent click(QEvent::MouseButtonPress,QPointF(76,68),QPointF(76,68),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QApplication::sendEvent(startIconGallery,&click);
+            if(!startIconChanged||selectedStartIcon!="kamakiri-windows"){QCoreApplication::exit(2);return;}
+        }
         capture(path);beginTrial();
     });
     auto check=new QTimer(this);check->setInterval(100);auto elapsed=new QElapsedTimer;elapsed->start();

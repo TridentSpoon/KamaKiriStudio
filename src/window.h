@@ -49,7 +49,9 @@ private:
     QComboBox *desktopSelect;
     QComboBox *wallpaperScope=nullptr, *wallpaperTheme=nullptr, *wallpaperGroup=nullptr;
     QComboBox *appearanceScope=nullptr, *appearanceDisplay=nullptr;
-    WallpaperGallery *wallpaperGallery=nullptr, *appearanceGallery=nullptr;
+    WallpaperGallery *wallpaperGallery=nullptr, *appearanceGallery=nullptr, *startIconGallery=nullptr;
+    QString selectedStartIcon;
+    bool startIconChanged=false;
     QVBoxLayout *monitorLayout=nullptr;
     QList<QCheckBox*> monitorEnabled;
     QList<QComboBox*> monitorEdges;

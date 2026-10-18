@@ -13,6 +13,14 @@
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void inlineStartIconUsesVerifiedConfigurationAndEscapedData(){
+        const auto script=Studio::launcherIconScript(42,"view-grid");
+        QVERIFY(script.contains("panelById(42)"));QVERIFY(script.contains("writeConfig('icon',"));QVERIFY(script.contains("readConfig('icon',"));QVERIFY(!script.contains("addWidget"));
+        QVERIFY_EXCEPTION_THROWN(Studio::launcherIconScript(-1,"view-grid"),std::runtime_error);
+        QJsonObject request{{"preset","caelestia"},{"accent","#509475"},{"startIcon","view-grid"}};Studio::validateRequest(request);
+        request["startIcon"]="https://example.invalid/icon.svg";QVERIFY_EXCEPTION_THROWN(Studio::validateRequest(request),std::runtime_error);
+    }
+
     void desktopFrameRespectsTheRailAndLeavesWindowSpaceClear() {
         auto path=Studio::desktopFramePath(QRectF(0,0,1280,800),{{"edge","left"},{"panelSize",42}});
         QVERIFY(!path.contains(QPointF(20,200))); // never paint over the existing rail

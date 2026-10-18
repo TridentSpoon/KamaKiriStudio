@@ -93,6 +93,12 @@ QJsonArray trialPanels(const QJsonObject &request) {
     return request.contains("panels")?request["panels"].toArray():QJsonArray{request["panel"]};
 }
 void validateRequest(const QJsonObject &r) {
+    if(r.contains("startIcon")){
+        const auto icon=r["startIcon"].toString();if(!r["startIcon"].isString()||icon.size()>4096)fail("Invalid Start icon.");
+        if(!icon.isEmpty()&&!QRegularExpression("^[A-Za-z0-9_.-]+$").match(icon).hasMatch()){
+            if(!QFileInfo(icon).isAbsolute()||!QFileInfo(icon).isReadable()||QFileInfo(icon).size()>8*1024*1024||!QImageReader(icon).canRead())fail("Choose a readable local Start icon.");
+        }
+    }
     if(r.contains("desktopFrame")){if(!r["desktopFrame"].isObject())fail("Invalid desktop frame configuration.");validateDesktopFrame(r["desktopFrame"].toObject());}
     if(r["panelPopupActions"].toBool()&&r["desktopLook"]!="caelestia")fail("KamaKiri popup buttons require Kamakiri style.");
     if(!QStringList{"single","all","span"}.contains(r["wallpaperScope"].toString("single")))fail("Unknown wallpaper display mode.");

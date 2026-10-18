@@ -15,6 +15,7 @@ class InputMonitor;
 QJsonObject desktopPalette(const QString &preset,const QString &mode);
 QStringList desktopLooks();
 QString launcherSettingsScript(int panelId);
+QString launcherIconScript(int panelId,const QString &icon);
 QJsonObject comparablePanelWidgetConfig(QJsonObject node,const QMap<QString,QString> &ids={});
 QJsonArray orderedPanelWidgets(const QJsonArray &widgets);
 QStringList themeWallpapers(const QString &preset);

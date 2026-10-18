@@ -7,10 +7,16 @@
 #include <QSettings>
 #include <QProcess>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QThread>
 #include <QCoreApplication>
 #include <QSet>
 #include <QFile>
+#include <QLockFile>
+#include <QFileInfo>
+#include <sys/stat.h>
+#include <signal.h>
+#include <unistd.h>
 #include <stdexcept>
 namespace Studio {
 QString desktopFrameHash(const QString &config){return QString::fromLatin1(QCryptographicHash::hash(config.toUtf8(),QCryptographicHash::Sha256).toHex());}
@@ -35,6 +41,20 @@ void validateDesktopFrame(const QJsonObject &config){
 void syncDesktopFrame(bool requireAllScreens,const QString &executable){
     QSettings settings;settings.sync();const auto config=settings.value("frame/config").toString();
     auto doc=QJsonDocument::fromJson(config.toUtf8());if(!config.isEmpty()&&!doc.isObject())throw std::runtime_error("Invalid saved desktop frame settings.");validateDesktopFrame(doc.object());
+    // Replace only our own outdated frame helper, during an explicit apply/restore.
+    // Plasma itself is never restarted.
+    const auto previous=readJson(stateRoot()+"/frame-status.json");
+    if(previous["protocol"].toInt()!=2){
+        QLockFile owner(stateRoot()+"/desktop-frame.lock");qint64 pid=0;QString host,name;
+        if(owner.getLockInfo(&pid,&host,&name)&&pid>0){
+            const auto proc="/proc/"+QString::number(pid);QFile command(proc+"/cmdline");struct stat info;
+            auto expected=executable.isEmpty()?QCoreApplication::applicationFilePath():executable;
+            auto binary=QFileInfo(proc+"/exe").symLinkTarget();if(binary.endsWith(" (deleted)"))binary.chop(10);
+            if(stat(QFile::encodeName(proc).constData(),&info)==0&&info.st_uid==getuid()&&binary==QFileInfo(expected).absoluteFilePath()&&command.open(QIODevice::ReadOnly)&&command.readAll().split('\0').contains("--desktop-frame")){
+                kill(pid,SIGTERM);QElapsedTimer stopped;stopped.start();while(kill(pid,0)==0&&stopped.elapsed()<1500){QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);QThread::msleep(20);}
+            }
+        }
+    }
     QFile::remove(stateRoot()+"/frame-status.json");
     if(!QProcess::startDetached(executable.isEmpty()?QCoreApplication::applicationFilePath():executable,{"--desktop-frame"}))throw std::runtime_error("The desktop frame could not start. Your trial will be restored.");
     QElapsedTimer timer;timer.start();

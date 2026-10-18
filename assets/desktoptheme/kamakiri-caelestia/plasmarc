@@ -2,13 +2,13 @@
 FallbackTheme=default
 
 [ContrastEffect]
-enabled=true
+enabled=false
 contrast=1.0
 intensity=1.0
 saturation=1.0
 
 [BlurBehindEffect]
-enabled=true
+enabled=false
 
 [AdaptiveTransparency]
 enabled=false

@@ -25,7 +25,7 @@ public:
         setAttribute(Qt::WA_TransparentForMouseEvents);setFocusPolicy(Qt::NoFocus);
         winId();auto window=windowHandle();window->setScreen(screen);
         auto layer=LayerShellQt::Window::get(window);layer->setScope("kamakiri-desktop-frame");layer->setScreen(screen);
-        layer->setLayer(LayerShellQt::Window::LayerTop);layer->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityNone);layer->setActivateOnShow(false);
+        layer->setLayer(reserve?LayerShellQt::Window::LayerBottom:LayerShellQt::Window::LayerTop);layer->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityNone);layer->setActivateOnShow(false);
         using L=LayerShellQt::Window;
         if(reserve){
             const L::Anchor edges[]={L::AnchorTop,L::AnchorRight,L::AnchorBottom,L::AnchorLeft};
@@ -66,7 +66,7 @@ int runDesktopFrame(){
             for(auto surface:surfaces){exposed&=surface->ready();windows.append(QJsonObject{{"painted",surface->ready()},{"width",surface->width()},{"height",surface->height()}});}
             // Disconnected outputs have no surfaces; new trials require every selected output.
             const bool complete=surfaces.size()==config["screens"].toArray().size()*5;
-            QJsonObject status{{"pid",qApp->applicationPid()},{"hash",currentHash},{"ready",exposed&&complete},{"availableReady",exposed},{"surfaces",surfaces.size()},{"windows",windows},{"error",complete?"":"A desktop frame monitor disconnected. Refresh displays and try again."}};
+            QJsonObject status{{"protocol",2},{"pid",qApp->applicationPid()},{"hash",currentHash},{"ready",exposed&&complete},{"availableReady",exposed},{"surfaces",surfaces.size()},{"windows",windows},{"error",complete?"":"A desktop frame monitor disconnected. Refresh displays and try again."}};
             if(status!=lastStatus||!QFile::exists(stateRoot()+"/frame-status.json")){writeJson(stateRoot()+"/frame-status.json",status);lastStatus=status;}
         }catch(const std::exception &e){clear();signature.clear();writeJson(stateRoot()+"/frame-status.json",{{"hash",currentHash},{"ready",false},{"error",QString::fromUtf8(e.what())}});}
     };

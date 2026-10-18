@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QFileInfo>
 #include <QProcess>
+#include <QSettings>
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QRegularExpression>
@@ -76,7 +77,7 @@ function config(w,path,depth){if(depth>12)throw new Error('Configuration too dee
 var launchers=['org.kde.plasma.kickoff','org.kde.plasma.kicker','org.kde.plasma.kickerdash','org.kamakiri.start'];
 function mutable(w){if(launchers.indexOf(w.type)>=0||w.type==='org.kde.plasma.panelspacer')return true;if(w.type!=='org.kde.plasma.icon')return false;w.currentConfigGroup=['General'];return /\/kamakiri-(launcher|dashboard)\.desktop$/.test(w.readConfig('url',''));}
 function trayConfig(w){w.currentConfigGroup=['General'];return {path:['General'],entries:{hiddenItems:w.readConfig('hiddenItems',[])},children:[]};}
-print(JSON.stringify({id:p.id,full:%2,screen:p.screen,location:p.location,height:p.height,floating:p.floating,alignment:p.alignment,lengthMode:p.lengthMode,length:p.length,offset:p.offset,hiding:p.hiding,widgets:p.widgets().sort(function(a,b){return a.index-b.index;}).map(function(w){return {id:w.id,type:w.type,index:w.index,shortcut:w.globalShortcut,launcher:mutable(w),config:%2||mutable(w)?config(w,[],0):w.type==='org.kde.plasma.systemtray'?trayConfig(w):null};})}));}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(id).arg(full?"true":"false");
+print(JSON.stringify({id:p.id,full:%2,screen:p.screen,location:p.location,height:p.height,floating:p.floating,opacity:p.opacity,alignment:p.alignment,lengthMode:p.lengthMode,length:p.length,offset:p.offset,hiding:p.hiding,widgets:p.widgets().sort(function(a,b){return a.index-b.index;}).map(function(w){return {id:w.id,type:w.type,index:w.index,shortcut:w.globalShortcut,launcher:mutable(w),config:%2||mutable(w)?config(w,[],0):w.type==='org.kde.plasma.systemtray'?trayConfig(w):null};})}));}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(id).arg(full?"true":"false");
 }
 static const QList<QStringList> settingsKeys{
     {"plasmarc","Theme","name"}, {"kdeglobals","KDE","widgetStyle"}, {"kdeglobals","Icons","Theme"},
@@ -95,13 +96,24 @@ QJsonObject snapshotLook(int panelId,bool full) {
 }
 static void applyTheme(const QString &name) {
     if(!QRegularExpression("^[a-zA-Z0-9_.-]+$").match(name).hasMatch())bad("Invalid Plasma style name.");
-    if(KConfig("plasmarc",KConfig::SimpleConfig).group("Theme").readEntry("name",QString("default"))==name)return;
+    const auto current=KConfig("plasmarc",KConfig::SimpleConfig).group("Theme").readEntry("name",QString("default"));
+    QSettings assets;const bool refresh=name=="kamakiri-caelestia"&&assets.value("assets/kamakiriRailRevision",0).toInt()!=2;
+    if(current==name&&!refresh)return;
     auto tool=QStandardPaths::findExecutable("plasma-apply-desktoptheme");if(tool.isEmpty())bad("KDE's Plasma style tool is missing.");
-    QProcess process;pid_t parent=getpid();process.setChildProcessModifier([parent]{if(prctl(PR_SET_PDEATHSIG,SIGKILL)!=0||getppid()!=parent)_exit(127);});process.start(tool,{name});
-    if(!process.waitForFinished(8000)){process.kill();process.waitForFinished();bad("Plasma style application timed out.");}
-    if(process.exitStatus()!=QProcess::NormalExit||process.exitCode()!=0)bad("Plasma refused the desktop style.");
+    auto set=[&](const QString &theme){QProcess process;pid_t parent=getpid();process.setChildProcessModifier([parent]{if(prctl(PR_SET_PDEATHSIG,SIGKILL)!=0||getppid()!=parent)_exit(127);});process.start(tool,{theme});
+        if(!process.waitForFinished(8000)){process.kill();process.waitForFinished();bad("Plasma style application timed out.");}
+        if(process.exitStatus()!=QProcess::NormalExit||process.exitCode()!=0)bad("Plasma refused the desktop style.");};
+    // Refresh updated SVG assets once, through KDE's supported theme interface.
+    if(current==name&&refresh)set("default");
+    set(name);
+    if(name=="kamakiri-caelestia"){assets.setValue("assets/kamakiriRailRevision",2);assets.sync();}
 }
+
 static void notifyLook(){notifyPalette();for(int type:{2,4}){auto change=QDBusMessage::createSignal("/KGlobalSettings","org.kde.KGlobalSettings","notifyChange");change<<type<<0;QDBusConnection::sessionBus().send(change);}QDBusConnection::sessionBus().send(QDBusMessage::createMethodCall("org.kde.KWin","/KWin","org.kde.KWin","reconfigure"));}
+QString launcherIconScript(int panelId,const QString &icon){
+    if(panelId<0)bad("Invalid launcher panel.");
+    return QString(R"JS(try{var p=panelById(%1);if(!p)throw new Error('Panel unavailable');var w=p.widgets('org.kamakiri.start');if(w.length!==1)throw new Error('Choose a panel with one Kamakiri or Fluent Start button');w[0].currentConfigGroup=['General'];w[0].writeConfig('icon',%2);if(w[0].readConfig('icon','')!==%2)throw new Error('Start icon could not be verified');print('STUDIO_OK');}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(panelId).arg(jsonString(icon));
+}
 QString launcherSettingsScript(int panelId) {
     if(panelId<0)bad("Choose a valid panel.");
     return QString(R"JS(try {var p=panelById(%1);if(!p)throw new Error('This panel is no longer available. Refresh displays and try again.');
@@ -132,7 +144,7 @@ if(launcherTypes.indexOf(w.type)>=0||w.type==='org.kde.plasma.panelspacer'||(loo
 var order=[];if(look==='fluent11')order.push(spacer());
 order.push(start);order.push(tasks);extras.forEach(function(w){order.push(w);});order.push(spacer());order.push(tray);order.push(clock);if(notifications)order.push(notifications);if(peek)order.push(peek);
 order.slice().reverse().forEach(function(w){w.index=0;});start.globalShortcut='Alt+F1';
-p.alignment=look==='fluent10'?'left':'center';p.offset=0;p.lengthMode='fill';p.hiding='none';print('STUDIO_OK');}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(id).arg(jsonString(look),jsonString(mode),jsonString(owner));
+p.alignment=look==='fluent10'?'left':'center';p.offset=0;p.lengthMode='fill';if(look==='caelestia'){p.floating=false;p.opacity='opaque';}else if(look==='plasma')p.opacity='adaptive';p.hiding='none';print('STUDIO_OK');}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(id).arg(jsonString(look),jsonString(mode),jsonString(owner));
 }
 void applyLook(const QJsonObject &r,const QString &owner) {
     QString look=r["desktopLook"].toString();if(!desktopLooks().contains(look))bad("Unknown desktop look.");
@@ -145,6 +157,7 @@ void applyLook(const QJsonObject &r,const QString &owner) {
     }
     notifyLook();plasmaScript(applyLookScript(r["panel"].toObject()["id"].toInt(),look,r["popupMode"].toString(),owner));
     if(look=="fluent11"||look=="fluent10")plasmaScript(QString(R"JS(try{var p=panelById(%1);var w=p.widgets().sort(function(a,b){return a.index-b.index;});if(w.length<3||w[w.length-3].type!=='org.kde.plasma.digitalclock'||w[w.length-2].type!=='org.kde.plasma.notifications'||w[w.length-1].type!=='org.kde.plasma.showdesktop')throw new Error('Clock and Desktop Peek placement could not be verified');print('STUDIO_OK');}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(r["panel"].toObject()["id"].toInt()));
+    if(r.contains("startIcon")&&look!="plasma")plasmaScript(launcherIconScript(r["panel"].toObject()["id"].toInt(),r["startIcon"].toString()));
     bool found=false;for(const auto &p:desktopInventory()["panelWidgets"].toArray())if(p.toObject()["id"]==r["panel"].toObject()["id"])for(const auto &w:p.toObject()["widgets"].toArray())if(w.toObject()["type"]==(look=="plasma"?"org.kde.plasma.kickoff":"org.kamakiri.start")&&w.toObject()["owner"]==owner)found=true;
     if(!found)bad("The new Start menu could not be verified.");
 }
@@ -155,7 +168,7 @@ p.widgets().forEach(function(w){w.currentConfigGroup=['General'];if(w.readConfig
 function restore(w,node,mapping){var path=node.path.slice();if(path[0]==='Applets'&&mapping[path[1]])path[1]=mapping[path[1]];w.currentConfigGroup=path;Object.keys(node.entries).forEach(function(k){w.writeConfig(k,node.entries[k]);});node.children.forEach(function(c){restore(w,c,mapping);});}
 function restoreWidget(w,s){if(!s.config)return;var mapping={};if(s.type==='org.kde.plasma.systemtray'){w.currentConfigGroup=['Applets'];var groups=Array.prototype.slice.call(w.configGroups);var available={};groups.forEach(function(g){w.currentConfigGroup=['Applets',g];available[w.readConfig('plugin','')]=g;});s.config.children.forEach(function(node){if(node.path.length===1&&node.path[0]==='Applets')node.children.forEach(function(child){var plugin=child.entries.plugin;if(!available[plugin])throw new Error('Tray widget unavailable during restoration: '+plugin);mapping[child.path[1]]=available[plugin];});});}restore(w,s.config,mapping);}
 var order=[];old.widgets.forEach(function(s){var w=p.widgetById(s.id);if(!w&&(s.launcher||old.full)){w=p.widgets().filter(function(a){a.currentConfigGroup=['General'];return a.readConfig('KamaKiriRestoredFrom','')===owner+':'+s.id;})[0];if(!w){w=p.addWidget(s.type);w.currentConfigGroup=['General'];w.writeConfig('KamaKiriRestoredFrom',owner+':'+s.id);}restoreWidget(w,s);w.globalShortcut=s.shortcut;}else if(w&&(old.full||s.config)){restoreWidget(w,s);w.globalShortcut=s.shortcut;}if(!w)throw new Error('Original taskbar widget unavailable');order.push({w:w,index:s.index});});order.sort(function(a,b){return a.index-b.index;});order.slice().reverse().forEach(function(v){v.w.index=v.index;});
-if(old.full){p.screen=old.screen;p.location=old.location;p.height=old.height;p.floating=old.floating;}p.alignment=old.alignment;p.offset=old.offset;p.lengthMode=old.lengthMode;if(old.lengthMode==='custom')p.length=old.length;p.hiding=old.hiding;print(p.id);}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(QString::fromUtf8(QJsonDocument(p).toJson(QJsonDocument::Compact)),jsonString(owner));
+if(old.full){p.screen=old.screen;p.location=old.location;p.height=old.height;p.floating=old.floating;}if(old.opacity!==undefined)p.opacity=old.opacity;p.alignment=old.alignment;p.offset=old.offset;p.lengthMode=old.lengthMode;if(old.lengthMode==='custom')p.length=old.length;p.hiding=old.hiding;print(p.id);}catch(e){print('STUDIO_ERROR:'+e);})JS").arg(QString::fromUtf8(QJsonDocument(p).toJson(QJsonDocument::Compact)),jsonString(owner));
 }
 QJsonArray orderedPanelWidgets(const QJsonArray &widgets) {
     QList<QJsonObject> sorted;for(const auto &w:widgets)sorted.append(w.toObject());
@@ -211,6 +224,7 @@ void restoreLook(const QJsonObject &saved,const QString &owner) {
             bad("Original taskbar settings could not be verified for "+a["type"].toString()+": "+(!sameConfig?"configuration differs":a["shortcut"]!=b["shortcut"]?"shortcut differs":"widget position or identity differs"));
     }
     if(oldPanel["full"].toBool())for(const auto &key:{"screen","location","height","floating"})if(oldPanel[key]!=newPanel[key])bad("Restored panel geometry differs.");
+    if(oldPanel.contains("opacity")&&oldPanel["opacity"]!=newPanel["opacity"])bad("Original panel opacity could not be verified.");
     for(const auto &key:{"alignment","lengthMode","offset","hiding"})if(oldPanel[key]!=newPanel[key])bad("Original taskbar placement could not be verified.");
 }
 }
