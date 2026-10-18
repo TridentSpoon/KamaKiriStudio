@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "window.h"
+#include "desktop_layout.h"
 #include <QScreen>
 #include <QGuiApplication>
 #include "wallpaper_gallery.h"
@@ -126,9 +127,13 @@ QWidget *StudioWindow::appearancePage() {
     auto scroll=new QScrollArea;scroll->setWidgetResizable(true);scroll->setFrameShape(QFrame::NoFrame);auto root=new QWidget;scroll->setWidget(root);auto v=new QVBoxLayout(root);v->setContentsMargins(0,0,8,0);v->setSpacing(12);
     v->addWidget(label("Your desktop, reimagined.","hero"));
     v->addWidget(label("Choose your desktop layout and menus, then its colors and wallpaper.","subtitle"));
-    lookSelect=new QComboBox;lookSelect->addItem("Keep current layout · customize colors","");lookSelect->addItem("Default Plasma · native KDE desktop","plasma");lookSelect->addItem("Kamakiri style · rounded menus and left rail","caelestia");lookSelect->addItem("Fluent 11 · Windows 11 layout","fluent11");lookSelect->addItem("Fluent 10 · Windows 10 layout","fluent10");
+    lookSelect=new QComboBox;lookSelect->addItem("Keep current layout · customize colors","");lookSelect->addItem("Default Plasma · native KDE desktop","plasma");lookSelect->addItem("Kamakiri style · slim left rail and rounded menus","caelestia");lookSelect->addItem("Fluent 11 · Windows 11 layout","fluent11");lookSelect->addItem("Fluent 10 · Windows 10 layout","fluent10");
     QSettings savedLook;lookSelect->setCurrentIndex(qMax(0,lookSelect->findData(savedLook.value("desktop/look",""))));
     v->addWidget(label("Theme","section"));v->addWidget(lookSelect);
+    auto framePreview=new QPushButton("Preview Kamakiri rail and rounded frame…");framePreview->setObjectName("desktopFramePreview");v->addWidget(framePreview);
+    framePreview->setVisible(lookSelect->currentData()=="caelestia");
+    connect(lookSelect,&QComboBox::currentIndexChanged,this,[this,framePreview]{framePreview->setVisible(lookSelect->currentData()=="caelestia");});
+    connect(framePreview,&QPushButton::clicked,this,[this]{try{auto colors=desktopPalette(preset,popupMode->currentData().toString());if(colors.isEmpty())colors={{"background",light->isChecked()?"#f3f4f5":"#1b1d23"},{"foreground",light->isChecked()?"#15161b":"#f4f4f4"}};colors["accent"]=accent.name();desktopLayoutPreview(wallpaperPath,colors)->show();}catch(const std::exception &e){error(QString::fromUtf8(e.what()));}});
     colorEnabled=new QCheckBox("Include KDE color changes in this trial");colorEnabled->setChecked(true);
     themeSelect=new QComboBox;
     themeSelect->addItem("Lavender","caelestia");
@@ -518,7 +523,7 @@ void StudioWindow::chooseLook() {
     QString targetEdge=look=="caelestia"?"left":"bottom";
     for(int i=0;i<panelSelect->count();i++)if(panelSelect->itemData(i).toJsonObject()["location"]==targetEdge){panelSelect->setCurrentIndex(i);break;}
     if(look=="plasma"){choosePreset("breeze");light->setChecked(true);popupMode->setCurrentIndex(popupMode->findData("desktop"));}
-    panelEnabled->setChecked(true);edgeSelect->setCurrentText(look=="caelestia"?"left":"bottom");height->setValue(look=="caelestia"?48:(look=="fluent11"||look=="plasma")?48:40);floating->setChecked(look=="caelestia"||look=="plasma");
+    panelEnabled->setChecked(true);edgeSelect->setCurrentText(look=="caelestia"?"left":"bottom");height->setValue(look=="caelestia"?42:(look=="fluent11"||look=="plasma")?48:40);floating->setChecked(look=="plasma");
     panelActions->setEnabled(look=="caelestia");panelActions->setChecked(look=="caelestia");popupStyle->setCurrentIndex(popupStyle->findData(look=="caelestia"?"rounded":"fluent"));colorEnabled->setChecked(true);updatePreview();
 }
 void StudioWindow::syncThemeWallpaper() {
