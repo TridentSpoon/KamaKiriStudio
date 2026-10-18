@@ -66,7 +66,7 @@ private:
     void refreshMonitorControls(const QJsonArray &desktops);
     void selectWallpaper(const QString &path,bool matchColors);
     void refreshWallpaperGallery();
-    QCheckBox *wallpaperEnabled=nullptr, *wallpaperColors=nullptr;
+    QCheckBox *wallpaperEnabled=nullptr, *wallpaperColors=nullptr, *desktopFrameEnabled=nullptr;
     QLabel *wallpaperPreview=nullptr;
     QPushButton *desktopApply;
     QList<QCheckBox*> widgetChoices;

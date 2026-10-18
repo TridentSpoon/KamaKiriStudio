@@ -131,8 +131,11 @@ QWidget *StudioWindow::appearancePage() {
     QSettings savedLook;lookSelect->setCurrentIndex(qMax(0,lookSelect->findData(savedLook.value("desktop/look",""))));
     v->addWidget(label("Theme","section"));v->addWidget(lookSelect);
     auto framePreview=new QPushButton("Preview Kamakiri rail and rounded frame…");framePreview->setObjectName("desktopFramePreview");v->addWidget(framePreview);
+    desktopFrameEnabled=new QCheckBox("Enable rounded desktop frame (Wayland)");desktopFrameEnabled->setObjectName("enableDesktopFrame");desktopFrameEnabled->setChecked(savedLook.value("ui/desktopFrameEnabled",true).toBool());desktopFrameEnabled->setEnabled(demoMode||QGuiApplication::platformName()=="wayland");v->addWidget(desktopFrameEnabled);
+    connect(desktopFrameEnabled,&QCheckBox::toggled,this,[](bool enabled){QSettings settings;settings.setValue("ui/desktopFrameEnabled",enabled);});
+    desktopFrameEnabled->setVisible(lookSelect->currentData()=="caelestia");
     framePreview->setVisible(lookSelect->currentData()=="caelestia");
-    connect(lookSelect,&QComboBox::currentIndexChanged,this,[this,framePreview]{framePreview->setVisible(lookSelect->currentData()=="caelestia");});
+    connect(lookSelect,&QComboBox::currentIndexChanged,this,[this,framePreview]{framePreview->setVisible(lookSelect->currentData()=="caelestia");desktopFrameEnabled->setVisible(lookSelect->currentData()=="caelestia");});
     connect(framePreview,&QPushButton::clicked,this,[this]{try{auto colors=desktopPalette(preset,popupMode->currentData().toString());if(colors.isEmpty())colors={{"background",light->isChecked()?"#f3f4f5":"#1b1d23"},{"foreground",light->isChecked()?"#15161b":"#f4f4f4"}};colors["accent"]=accent.name();desktopLayoutPreview(wallpaperPath,colors)->show();}catch(const std::exception &e){error(QString::fromUtf8(e.what()));}});
     colorEnabled=new QCheckBox("Include KDE color changes in this trial");colorEnabled->setChecked(true);
     themeSelect=new QComboBox;
@@ -350,6 +353,15 @@ QJsonObject StudioWindow::desired() const {
         result["changePanel"]=panelEnabled->isChecked()&&(!panelChoices.isEmpty()||!removedPanels.isEmpty()||!createdPanels.isEmpty());
         if(!panelChoices.isEmpty())result["panel"]=panelChoices.first();
         if(!result["changePanel"].toBool()){result["desktopLook"]="";result["panelPopupActions"]=false;}
+    }
+    if(!wallpaperOnly&&!result["desktopLook"].toString().isEmpty()&&QGuiApplication::platformName()=="wayland"){
+        QJsonObject frame;
+        if(result["desktopLook"]=="caelestia"&&desktopFrameEnabled->isChecked()){
+            QJsonArray screens;
+            for(int i=0;i<monitorEnabled.size();++i)if(monitorEnabled[i]->isChecked())screens.append(QJsonObject{{"name",monitorEnabled[i]->property("monitorKey").toString()},{"edge",monitorEdges[i]->currentData().toString()},{"panelSize",monitorEdges[i]->currentData()=="none"?0:height->value()}});
+            if(!screens.isEmpty())frame={{"version",1},{"color",colorEnabled->isChecked()?preview->customPalette.value("background").toString(palette().color(QPalette::Window).name()):palette().color(QPalette::Window).name()},{"screens",screens}};
+        }
+        result["desktopFrame"]=frame;
     }
     if(wallpaperOnly){result["changeWallpaper"]=true;result["changeColors"]=false;result["changePanel"]=false;result["panels"]=QJsonArray{};result["removePanelIds"]=QJsonArray{};result["createPanels"]=QJsonArray{};result["desktopLook"]="";result["changePopupLook"]=false;result["panelPopupActions"]=false;result["widgets"]=QJsonArray{};}
     return result;

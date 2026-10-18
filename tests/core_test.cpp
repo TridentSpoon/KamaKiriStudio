@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "core.h"
 #include "plugin_checks.h"
+#include "desktop_frame.h"
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QFile>
@@ -12,6 +13,21 @@
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void desktopFrameRespectsTheRailAndLeavesWindowSpaceClear() {
+        auto path=Studio::desktopFramePath(QRectF(0,0,1280,800),{{"edge","left"},{"panelSize",42}});
+        QVERIFY(!path.contains(QPointF(20,200))); // never paint over the existing rail
+        QVERIFY(path.contains(QPointF(45,200))); // thin frame beside it
+        QVERIFY(path.contains(QPointF(51,9))); // rounded inner corner
+        QVERIFY(!path.contains(QPointF(400,400))); // transparent desktop/window area
+        QVERIFY(!path.contains(QPointF(75,33))); // maximised window's reserved top-left
+        Studio::validateDesktopFrame({});
+        QJsonObject spec{{"name","Virtual-1"},{"edge","left"},{"panelSize",42}};
+        QJsonObject config{{"version",1},{"color","#14231c"},{"screens",QJsonArray{spec}}};
+        Studio::validateDesktopFrame(config);
+        config["screens"]=QJsonArray{spec,spec};QVERIFY_EXCEPTION_THROWN(Studio::validateDesktopFrame(config),std::runtime_error);
+        config["screens"]=QJsonArray{};QVERIFY_EXCEPTION_THROWN(Studio::validateDesktopFrame(config),std::runtime_error);
+    }
+
     void oxygenGlowFollowsAccentAndRestoresOnlyItsOwnKeys() {
         QTemporaryDir directory;const auto path=directory.filePath("oxygenrc");
         {KConfig c(path,KConfig::SimpleConfig);auto g=c.group("ActiveShadow");g.writeEntry("InnerColor",QString("18,52,86"));g.writeEntry("UseAccentColor",false);g.writeEntry("ShadowSize",52);c.group("InactiveShadow").writeEntry("OuterColor",QString("32,32,32"));QVERIFY(c.sync());}

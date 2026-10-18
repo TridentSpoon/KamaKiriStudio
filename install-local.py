@@ -53,6 +53,7 @@ def main():
             if asset.is_file():entries[destination/asset.relative_to(assets)]=(asset.read_bytes(),0o644)
     for name in ('update-local.py','install-local.py'):
         entries[prefix/'share/kamakiri-studio'/name]=((trusted/name).read_bytes(),0o644)
+    entries[config/'autostart/kamakiri-desktop-frame.desktop']=((f'[Desktop Entry]\nType=Application\nName=KamaKiri desktop frame\nExec={desktop_quote(binary)} --desktop-frame\nTerminal=false\nNoDisplay=true\nOnlyShowIn=KDE;\n').encode(),0o644)
     previous={}
     if receipt.exists():
         manifest=json.loads(receipt.read_text())

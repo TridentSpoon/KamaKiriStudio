@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "core.h"
+#include "desktop_frame.h"
 #include "input_monitor.h"
 #include "plugin_checks.h"
 #include <KConfig>
@@ -92,6 +93,7 @@ QJsonArray trialPanels(const QJsonObject &request) {
     return request.contains("panels")?request["panels"].toArray():QJsonArray{request["panel"]};
 }
 void validateRequest(const QJsonObject &r) {
+    if(r.contains("desktopFrame")){if(!r["desktopFrame"].isObject())fail("Invalid desktop frame configuration.");validateDesktopFrame(r["desktopFrame"].toObject());}
     if(r["panelPopupActions"].toBool()&&r["desktopLook"]!="caelestia")fail("KamaKiri popup buttons require Kamakiri style.");
     if(!QStringList{"single","all","span"}.contains(r["wallpaperScope"].toString("single")))fail("Unknown wallpaper display mode.");
     if(!r["desktopLook"].toString().isEmpty()){if(!desktopLooks().contains(r["desktopLook"].toString())||!r["changePanel"].toBool())fail("Choose a panel for the desktop look.");}
@@ -297,7 +299,7 @@ static void restoreSnapshot(const QString &dir, bool demo) {
         checkPluginSession(recoveryPluginRequirements(snapshot));
         if(snapshot["changeColors"].toBool(true)) {restoreColors(dir+"/colors-before.ini", configFile());if(snapshot.contains("oxygenGlowBefore")){restoreOxygenGlow(snapshot["oxygenGlowBefore"].toObject());notifyWindowDecoration();}notifyPalette();}
         if(snapshot["changePopupLook"].toBool()) {
-            QSettings settings;auto old=snapshot["popupBefore"].toObject();for(const auto &key:{"popup/style","popup/mode","desktop/look"}){auto entry=old[key].toObject();if(entry["present"].toBool())settings.setValue(key,entry["value"].toVariant());else settings.remove(key);}settings.sync();if(settings.status()!=QSettings::NoError)fail("Popup look restoration failed.");
+            QSettings settings;auto old=snapshot["popupBefore"].toObject();for(const auto &key:{"popup/style","popup/mode","desktop/look","frame/config"}){if(QString(key)=="frame/config"&&!old.contains(key))continue;auto entry=old[key].toObject();if(entry["present"].toBool())settings.setValue(key,entry["value"].toVariant());else settings.remove(key);}settings.sync();if(settings.status()!=QSettings::NoError)fail("Popup look restoration failed.");if(old.contains("frame/config"))syncDesktopFrame(false);
         }
         QString owner=QFileInfo(dir).fileName();
         plasmaScript(QString("panels().forEach(function(p){p.currentConfigGroup=['General'];if(p.readConfig('KamaKiriPanelOwner','')===%1)p.remove();});").arg(jsonString(owner)));
@@ -391,7 +393,7 @@ void Worker::start() {
                 panelPopupActionsScript(request["panel"].toObject()["id"].toInt(),QFileInfo(dir).fileName());
             }
             if(!request["desktopLook"].toString().isEmpty()){snapshot["desktopStylingBefore"]=snapshotDesktopStyling();QJsonArray looks;for(const auto &p:trialPanels(request))looks.append(snapshotLook(p.toObject()["id"].toInt()));snapshot["desktopLooksBefore"]=looks;}
-            if(request["changePopupLook"].toBool()) {QSettings settings;QJsonObject before;for(const auto &key:{"popup/style","popup/mode","desktop/look"})before[key]=QJsonObject{{"present",settings.contains(key)},{"value",QJsonValue::fromVariant(settings.value(key))}};snapshot["popupBefore"]=before;}
+            if(request["changePopupLook"].toBool()) {QSettings settings;QJsonObject before;QStringList keys{"popup/style","popup/mode","desktop/look"};if(request.contains("desktopFrame"))keys.append("frame/config");for(const auto &key:keys)before[key]=QJsonObject{{"present",settings.contains(key)},{"value",QJsonValue::fromVariant(settings.value(key))}};snapshot["popupBefore"]=before;}
         }
         snapshot["changeDesktopLook"]=!request["desktopLook"].toString().isEmpty();
         snapshot["changePanel"]=request["changePanel"].toBool();
@@ -443,7 +445,7 @@ void Worker::start() {
                 }
             }
             if(request["panelPopupActions"].toBool())plasmaScript(panelPopupActionsScript(request["panel"].toObject()["id"].toInt(),QFileInfo(dir).fileName()));
-            if(request["changePopupLook"].toBool()) {QSettings settings;settings.setValue("desktop/look",request["desktopLook"].toString());settings.setValue("popup/style",request["popupStyle"].toString());settings.setValue("popup/mode",request["popupMode"].toString());settings.sync();if(settings.status()!=QSettings::NoError)fail("Cannot save popup look.");}
+            if(request["changePopupLook"].toBool()) {QSettings settings;settings.setValue("desktop/look",request["desktopLook"].toString());if(request.contains("desktopFrame"))settings.setValue("frame/config",request["desktopFrame"].toObject().isEmpty()?QString():QString::fromUtf8(QJsonDocument(request["desktopFrame"].toObject()).toJson(QJsonDocument::Compact)));settings.setValue("popup/style",request["popupStyle"].toString());settings.setValue("popup/mode",request["popupMode"].toString());settings.sync();if(settings.status()!=QSettings::NoError)fail("Cannot save popup look.");if(request.contains("desktopFrame"))syncDesktopFrame();}
         }
         if(!demo && request["changeWallpaper"].toBool()) {
             auto targets=snapshot["wallpaperBefore"].toArray();QStringList images;
