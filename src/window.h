@@ -49,7 +49,9 @@ private:
     QComboBox *desktopSelect;
     QComboBox *wallpaperScope=nullptr, *wallpaperTheme=nullptr, *wallpaperGroup=nullptr;
     QComboBox *appearanceScope=nullptr, *appearanceDisplay=nullptr;
-    WallpaperGallery *wallpaperGallery=nullptr, *appearanceGallery=nullptr;
+    WallpaperGallery *wallpaperGallery=nullptr, *appearanceGallery=nullptr, *startIconGallery=nullptr;
+    QString selectedStartIcon;
+    bool startIconChanged=false;
     QVBoxLayout *monitorLayout=nullptr;
     QList<QCheckBox*> monitorEnabled;
     QList<QComboBox*> monitorEdges;
@@ -66,7 +68,7 @@ private:
     void refreshMonitorControls(const QJsonArray &desktops);
     void selectWallpaper(const QString &path,bool matchColors);
     void refreshWallpaperGallery();
-    QCheckBox *wallpaperEnabled=nullptr, *wallpaperColors=nullptr;
+    QCheckBox *wallpaperEnabled=nullptr, *wallpaperColors=nullptr, *desktopFrameEnabled=nullptr;
     QLabel *wallpaperPreview=nullptr;
     QPushButton *desktopApply;
     QList<QCheckBox*> widgetChoices;

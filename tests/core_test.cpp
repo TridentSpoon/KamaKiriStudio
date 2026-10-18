@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "core.h"
 #include "plugin_checks.h"
+#include "desktop_frame.h"
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QFile>
@@ -12,6 +13,40 @@
 class CoreTest:public QObject {
     Q_OBJECT
 private slots:
+    void inlineStartIconUsesVerifiedConfigurationAndEscapedData(){
+        const auto script=Studio::launcherIconScript(42,"view-grid");
+        QVERIFY(script.contains("panelById(42)"));QVERIFY(script.contains("writeConfig('icon',"));QVERIFY(script.contains("readConfig('icon',"));QVERIFY(!script.contains("addWidget"));
+        QVERIFY_EXCEPTION_THROWN(Studio::launcherIconScript(-1,"view-grid"),std::runtime_error);
+        QJsonObject request{{"preset","caelestia"},{"accent","#509475"},{"startIcon","view-grid"}};Studio::validateRequest(request);
+        request["startIcon"]="https://example.invalid/icon.svg";QVERIFY_EXCEPTION_THROWN(Studio::validateRequest(request),std::runtime_error);
+    }
+
+    void desktopFrameRespectsTheRailAndLeavesWindowSpaceClear() {
+        auto path=Studio::desktopFramePath(QRectF(0,0,1280,800),{{"edge","left"},{"panelSize",42}});
+        QVERIFY(!path.contains(QPointF(20,200))); // never paint over the existing rail
+        QVERIFY(path.contains(QPointF(45,200))); // thin frame beside it
+        QVERIFY(path.contains(QPointF(51,9))); // rounded inner corner
+        QVERIFY(!path.contains(QPointF(400,400))); // transparent desktop/window area
+        QVERIFY(!path.contains(QPointF(75,33))); // maximised window's reserved top-left
+        Studio::validateDesktopFrame({});
+        QJsonObject spec{{"name","Virtual-1"},{"edge","left"},{"panelSize",42}};
+        QJsonObject config{{"version",1},{"color","#14231c"},{"screens",QJsonArray{spec}}};
+        Studio::validateDesktopFrame(config);
+        config["screens"]=QJsonArray{spec,spec};QVERIFY_EXCEPTION_THROWN(Studio::validateDesktopFrame(config),std::runtime_error);
+        config["screens"]=QJsonArray{};QVERIFY_EXCEPTION_THROWN(Studio::validateDesktopFrame(config),std::runtime_error);
+    }
+
+    void oxygenGlowFollowsAccentAndRestoresOnlyItsOwnKeys() {
+        QTemporaryDir directory;const auto path=directory.filePath("oxygenrc");
+        {KConfig c(path,KConfig::SimpleConfig);auto g=c.group("ActiveShadow");g.writeEntry("InnerColor",QString("18,52,86"));g.writeEntry("UseAccentColor",false);g.writeEntry("ShadowSize",52);c.group("InactiveShadow").writeEntry("OuterColor",QString("32,32,32"));QVERIFY(c.sync());}
+        const auto before=Studio::snapshotOxygenGlow(path);
+        Studio::applyOxygenGlow(QColor("#509475"),path);
+        {KConfig c(path,KConfig::SimpleConfig);auto g=c.group("ActiveShadow");QCOMPARE(g.readEntry("OuterColor",QString()),QString("80,148,117"));QVERIFY(g.readEntry("UseAccentColor",false));QCOMPARE(g.readEntry("ShadowSize",0),52);g.writeEntry("ShadowSize",60);QVERIFY(c.sync());}
+        Studio::restoreOxygenGlow(before,path);QCOMPARE(Studio::snapshotOxygenGlow(path),before);
+        {KConfig c(path,KConfig::SimpleConfig);QCOMPARE(c.group("ActiveShadow").readEntry("ShadowSize",0),60);QVERIFY(!c.group("ActiveShadow").hasKey("OuterColor"));QCOMPARE(c.group("InactiveShadow").readEntry("OuterColor",QString()),QString("32,32,32"));}
+        QVERIFY_EXCEPTION_THROWN(Studio::applyOxygenGlow(QColor(),path),std::runtime_error);
+    }
+
     void launcherSettingsOnlyOpenTheSelectedWidgetsConfiguration() {
         auto script=Studio::launcherSettingsScript(42);
         QVERIFY(script.contains("panelById(42)"));QVERIFY(script.contains("showConfigurationInterface()"));
@@ -58,6 +93,15 @@ private slots:
         QVERIFY_EXCEPTION_THROWN(Studio::validatePlasmaRuntimeMaps(core,QString(core).replace(" 100 "," 101 "),false),std::runtime_error);
         QVERIFY_EXCEPTION_THROWN(Studio::validatePlasmaRuntimeMaps(QString(core).replace(".2\n",".2 (deleted)\n"),core,false),std::runtime_error);
         QVERIFY_EXCEPTION_THROWN(Studio::validatePlasmaRuntimeMaps("",core,false),std::runtime_error);
+    }
+    void btrfsSubvolumeDevicesDoNotCauseFalseCompatibilityBlocks() {
+        const QString mounts="1 0 0:33 /@ / rw - btrfs /dev/test rw\n2 1 8:1 / /media rw - ext4 /dev/other rw\n";
+        QVERIFY(Studio::btrfsMappingDeviceMatches("/usr/lib/qt6/plugins/imageformats/kimg_xcf.so","0:33",mounts));
+        QVERIFY(!Studio::btrfsMappingDeviceMatches("/usr/lib/test.so","0:99",mounts));
+        QVERIFY(!Studio::btrfsMappingDeviceMatches("/media/test.so","0:33",mounts));
+        QVERIFY(Studio::btrfsMappingDeviceMatches("/media-other/test.so","0:33",mounts));
+        QVERIFY(!Studio::btrfsMappingDeviceMatches("/usr/lib/test.so","0:33",""));
+        QVERIFY(Studio::btrfsMappingDeviceMatches("/path with space/test.so","0:44",mounts+"3 1 0:44 /@other /path\\040with\\040space rw - btrfs /dev/test rw\n"));
     }
     void changedKdeLibrariesAreDetectedBeforeMutation() {
         QTemporaryDir directory;QVERIFY(directory.isValid());

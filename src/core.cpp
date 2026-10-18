@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "core.h"
+#include "desktop_frame.h"
 #include "input_monitor.h"
 #include "plugin_checks.h"
 #include <KConfig>
@@ -92,6 +93,13 @@ QJsonArray trialPanels(const QJsonObject &request) {
     return request.contains("panels")?request["panels"].toArray():QJsonArray{request["panel"]};
 }
 void validateRequest(const QJsonObject &r) {
+    if(r.contains("startIcon")){
+        const auto icon=r["startIcon"].toString();if(!r["startIcon"].isString()||icon.size()>4096)fail("Invalid Start icon.");
+        if(!icon.isEmpty()&&!QRegularExpression("^[A-Za-z0-9_.-]+$").match(icon).hasMatch()){
+            if(!QFileInfo(icon).isAbsolute()||!QFileInfo(icon).isReadable()||QFileInfo(icon).size()>8*1024*1024||!QImageReader(icon).canRead())fail("Choose a readable local Start icon.");
+        }
+    }
+    if(r.contains("desktopFrame")){if(!r["desktopFrame"].isObject())fail("Invalid desktop frame configuration.");validateDesktopFrame(r["desktopFrame"].toObject());}
     if(r["panelPopupActions"].toBool()&&r["desktopLook"]!="caelestia")fail("KamaKiri popup buttons require Kamakiri style.");
     if(!QStringList{"single","all","span"}.contains(r["wallpaperScope"].toString("single")))fail("Unknown wallpaper display mode.");
     if(!r["desktopLook"].toString().isEmpty()){if(!desktopLooks().contains(r["desktopLook"].toString())||!r["changePanel"].toBool())fail("Choose a panel for the desktop look.");}
@@ -237,6 +245,30 @@ QString makeScheme(const QJsonObject &r, const QString &id) {
     if (!scheme.sync()) fail("Cannot save the trial color scheme.");
     return path;
 }
+// Oxygen's active glow has its own settings, separate from kdeglobals.
+static const QStringList oxygenGlowKeys{"InnerColor","OuterColor","UseAccentColor"};
+QJsonObject snapshotOxygenGlow(const QString &file) {
+    KConfig config(file,KConfig::SimpleConfig);auto group=config.group("ActiveShadow");QJsonObject result;
+    for(const auto &key:oxygenGlowKeys)result[key]=QJsonObject{{"present",group.hasKey(key)},{"value",group.readEntry(key,QString())}};
+    return result;
+}
+void applyOxygenGlow(const QColor &accent,const QString &file) {
+    if(!accent.isValid())fail("Invalid active-window glow colour.");
+    KConfig config(file,KConfig::SimpleConfig);auto group=config.group("ActiveShadow");
+    auto rgb=[](const QColor &c){return QString("%1,%2,%3").arg(c.red()).arg(c.green()).arg(c.blue());};
+    group.writeEntry("InnerColor",rgb(accent.lighter(140)),KConfig::Notify);
+    group.writeEntry("OuterColor",rgb(accent),KConfig::Notify);
+    group.writeEntry("UseAccentColor",true,KConfig::Notify);
+    if(!config.sync())fail("Cannot save Oxygen's active-window glow.");
+}
+void restoreOxygenGlow(const QJsonObject &before,const QString &file) {
+    KConfig config(file,KConfig::SimpleConfig);auto group=config.group("ActiveShadow");
+    for(const auto &key:oxygenGlowKeys){auto entry=before[key].toObject();if(entry["present"].toBool())group.writeEntry(key,entry["value"].toString(),KConfig::Notify);else group.deleteEntry(key,KConfig::Notify);}
+    if(!config.sync()||snapshotOxygenGlow(file)!=before)fail("Oxygen glow restoration could not be verified. Your recovery snapshot has been preserved.");
+}
+static void notifyWindowDecoration() {
+    QDBusConnection::sessionBus().send(QDBusMessage::createMethodCall("org.kde.KWin","/KWin","org.kde.KWin","reconfigure"));
+}
 void notifyPalette() {
     auto m = QDBusMessage::createSignal("/KGlobalSettings", "org.kde.KGlobalSettings", "notifyChange");
     m << 0 << 0;
@@ -271,9 +303,9 @@ static void restoreSnapshot(const QString &dir, bool demo) {
     if (!demo) {
         // Verify recovery plugins before any restoration or removal of trial widgets.
         checkPluginSession(recoveryPluginRequirements(snapshot));
-        if(snapshot["changeColors"].toBool(true)) {restoreColors(dir+"/colors-before.ini", configFile());notifyPalette();}
+        if(snapshot["changeColors"].toBool(true)) {restoreColors(dir+"/colors-before.ini", configFile());if(snapshot.contains("oxygenGlowBefore")){restoreOxygenGlow(snapshot["oxygenGlowBefore"].toObject());notifyWindowDecoration();}notifyPalette();}
         if(snapshot["changePopupLook"].toBool()) {
-            QSettings settings;auto old=snapshot["popupBefore"].toObject();for(const auto &key:{"popup/style","popup/mode","desktop/look"}){auto entry=old[key].toObject();if(entry["present"].toBool())settings.setValue(key,entry["value"].toVariant());else settings.remove(key);}settings.sync();if(settings.status()!=QSettings::NoError)fail("Popup look restoration failed.");
+            QSettings settings;auto old=snapshot["popupBefore"].toObject();for(const auto &key:{"popup/style","popup/mode","desktop/look","frame/config"}){if(QString(key)=="frame/config"&&!old.contains(key))continue;auto entry=old[key].toObject();if(entry["present"].toBool())settings.setValue(key,entry["value"].toVariant());else settings.remove(key);}settings.sync();if(settings.status()!=QSettings::NoError)fail("Popup look restoration failed.");if(old.contains("frame/config"))syncDesktopFrame(false);
         }
         QString owner=QFileInfo(dir).fileName();
         plasmaScript(QString("panels().forEach(function(p){p.currentConfigGroup=['General'];if(p.readConfig('KamaKiriPanelOwner','')===%1)p.remove();});").arg(jsonString(owner)));
@@ -356,14 +388,18 @@ void Worker::start() {
                 if(request["changeWallpaper"].toBool())snapshot["wallpaperBefore"]=wallpaperTargets(desktopData["desktops"].toArray(),request["desktopId"].toInt(),request["wallpaperScope"].toString("single"),request["wallpaperDesktopIds"].toArray());
                 for(const auto &t:request["widgets"].toArray())if(!desktopData["types"].toArray().contains(t))fail("A selected widget is no longer installed.");
             }
-            if(request["changeColors"].toBool(true))copyBackup(configFile(),dir+"/colors-before.ini");
+            if(request["changeColors"].toBool(true)){
+                copyBackup(configFile(),dir+"/colors-before.ini");
+                KConfig kwin("kwinrc",KConfig::SimpleConfig);
+                if(kwin.group("org.kde.kdecoration2").readEntry("library",QString())=="org.kde.oxygen")snapshot["oxygenGlowBefore"]=snapshotOxygenGlow();
+            }
             if(request["panelPopupActions"].toBool()) {
                 bool found=false;for(const auto &p:ps)if(p.toObject()["id"]==request["panel"].toObject()["id"])found=true;
                 if(!found)fail("The popup panel target is unavailable.");
                 panelPopupActionsScript(request["panel"].toObject()["id"].toInt(),QFileInfo(dir).fileName());
             }
             if(!request["desktopLook"].toString().isEmpty()){snapshot["desktopStylingBefore"]=snapshotDesktopStyling();QJsonArray looks;for(const auto &p:trialPanels(request))looks.append(snapshotLook(p.toObject()["id"].toInt()));snapshot["desktopLooksBefore"]=looks;}
-            if(request["changePopupLook"].toBool()) {QSettings settings;QJsonObject before;for(const auto &key:{"popup/style","popup/mode","desktop/look"})before[key]=QJsonObject{{"present",settings.contains(key)},{"value",QJsonValue::fromVariant(settings.value(key))}};snapshot["popupBefore"]=before;}
+            if(request["changePopupLook"].toBool()) {QSettings settings;QJsonObject before;QStringList keys{"popup/style","popup/mode","desktop/look"};if(request.contains("desktopFrame"))keys.append("frame/config");for(const auto &key:keys)before[key]=QJsonObject{{"present",settings.contains(key)},{"value",QJsonValue::fromVariant(settings.value(key))}};snapshot["popupBefore"]=before;}
         }
         snapshot["changeDesktopLook"]=!request["desktopLook"].toString().isEmpty();
         snapshot["changePanel"]=request["changePanel"].toBool();
@@ -399,6 +435,7 @@ void Worker::start() {
             if(apply.exitStatus()!=QProcess::NormalExit || apply.exitCode()!=0) fail("KDE refused the color scheme: "+QString::fromUtf8(apply.readAllStandardError()));
             KConfig check(configFile(),KConfig::SimpleConfig);
             if(check.group("General").readEntry("ColorScheme",QString())!=QFileInfo(scheme).completeBaseName()) fail("Cannot verify that the trial palette was applied.");
+            if(snapshot.contains("oxygenGlowBefore")){applyOxygenGlow(trialAccent);notifyWindowDecoration();}
         }
         if(!demo){
             for(const auto &target:trialPanels(request)){
@@ -414,7 +451,7 @@ void Worker::start() {
                 }
             }
             if(request["panelPopupActions"].toBool())plasmaScript(panelPopupActionsScript(request["panel"].toObject()["id"].toInt(),QFileInfo(dir).fileName()));
-            if(request["changePopupLook"].toBool()) {QSettings settings;settings.setValue("desktop/look",request["desktopLook"].toString());settings.setValue("popup/style",request["popupStyle"].toString());settings.setValue("popup/mode",request["popupMode"].toString());settings.sync();if(settings.status()!=QSettings::NoError)fail("Cannot save popup look.");}
+            if(request["changePopupLook"].toBool()) {QSettings settings;settings.setValue("desktop/look",request["desktopLook"].toString());if(request.contains("desktopFrame"))settings.setValue("frame/config",request["desktopFrame"].toObject().isEmpty()?QString():QString::fromUtf8(QJsonDocument(request["desktopFrame"].toObject()).toJson(QJsonDocument::Compact)));settings.setValue("popup/style",request["popupStyle"].toString());settings.setValue("popup/mode",request["popupMode"].toString());settings.sync();if(settings.status()!=QSettings::NoError)fail("Cannot save popup look.");if(request.contains("desktopFrame"))syncDesktopFrame();}
         }
         if(!demo && request["changeWallpaper"].toBool()) {
             auto targets=snapshot["wallpaperBefore"].toArray();QStringList images;

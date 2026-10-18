@@ -1,1 +1,1 @@
-<RCC><qresource prefix="/start"><file alias="StartMenu.qml">plasmoids/org.kamakiri.start/contents/ui/StartMenu.qml</file></qresource></RCC>
+<RCC><qresource prefix="/start"><file alias="StartMenu.qml">plasmoids/org.kamakiri.start/contents/ui/StartMenu.qml</file></qresource><qresource prefix="/desktop"><file alias="DesktopLayout.qml">desktop-layout/DesktopLayout.qml</file></qresource></RCC>

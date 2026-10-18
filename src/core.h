@@ -15,6 +15,7 @@ class InputMonitor;
 QJsonObject desktopPalette(const QString &preset,const QString &mode);
 QStringList desktopLooks();
 QString launcherSettingsScript(int panelId);
+QString launcherIconScript(int panelId,const QString &icon);
 QJsonObject comparablePanelWidgetConfig(QJsonObject node,const QMap<QString,QString> &ids={});
 QJsonArray orderedPanelWidgets(const QJsonArray &widgets);
 QStringList themeWallpapers(const QString &preset);
@@ -59,6 +60,9 @@ void validateRequest(const QJsonObject &request);
 void restoreColors(const QString &backup, const QString &destination);
 QString makeScheme(const QJsonObject &request, const QString &id);
 void notifyPalette();
+QJsonObject snapshotOxygenGlow(const QString &file="oxygenrc");
+void applyOxygenGlow(const QColor &accent,const QString &file="oxygenrc");
+void restoreOxygenGlow(const QJsonObject &before,const QString &file="oxygenrc");
 QJsonObject inspect();
 
 // Pure decision logic, driven by monotonic elapsed time; no visible countdown.

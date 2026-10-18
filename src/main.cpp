@@ -2,6 +2,8 @@
 #include <QQuickItem>
 // SPDX-License-Identifier: MIT
 #include "window.h"
+#include "desktop_layout.h"
+#include "desktop_frame.h"
 #include "popup.h"
 #include "input_monitor.h"
 #include "plugin_checks.h"
@@ -30,12 +32,20 @@ int main(int argc,char **argv) {
     app.setApplicationName("KamaKiriStudio");app.setOrganizationName("KamaKiriStudio");app.setApplicationVersion("0.5.0");
     app.setQuitOnLastWindowClosed(false);
     QCommandLineParser p;p.setApplicationDescription("KDE-first appearance trials and installed-session switching.");p.addHelpOption();p.addVersionOption();
-    p.addOptions({{"check-plugins","Read-only running-session compatibility check for comma-separated plugin IDs.","plugins"},{"probe-plugin","Compile an installed Plasma plugin with session Qt imports (internal).","plugin"},{"start-check","Validate native Start menu catalog and preview safety."},{"demo-look","Choose a look for an isolated manager preview.","look"},{"start-preview","Preview a native Start menu: caelestia, fluent11, fluent10.","look"},{"popup-style","Popup style: rounded or fluent.","style"},{"popup-mode","Popup mode: desktop, light or dark.","mode"},{"launcher","Open the rounded application popup."},{"dashboard","Open the rounded dashboard popup."},{"check-updates","Report the official GitHub release check without opening a window."},{"capture-page","Select a page for capture.","name"},{"demo-wallpaper","Set an image for an isolated preview check.","path"},{"demo","Preview without changing desktop settings."},{"worker","Independent trial watchdog (internal).","id"},{"recover","Restore an unfinished trial.","id"},{"recover-all","Restore abandoned trials at login without opening a window."},{"inspect","Print read-only desktop integration details."},{"ui-check","Run an isolated GUI confirmation check and capture an image.","path"},{"capture","Save a screenshot of the app, then exit.","path"},{"probe-input","Test global input reporting without changing settings."}});
+    p.addOptions({{"desktop-frame","Run the mouse-transparent Kamakiri frame service (internal)."},{"desktop-layout-preview","Open the isolated Kamakiri rail/frame preview."},{"check-plugins","Read-only running-session compatibility check for comma-separated plugin IDs.","plugins"},{"probe-plugin","Compile an installed Plasma plugin with session Qt imports (internal).","plugin"},{"start-check","Validate native Start menu catalog and preview safety."},{"demo-look","Choose a look for an isolated manager preview.","look"},{"start-preview","Preview a native Start menu: caelestia, fluent11, fluent10.","look"},{"popup-style","Popup style: rounded or fluent.","style"},{"popup-mode","Popup mode: desktop, light or dark.","mode"},{"launcher","Open the rounded application popup."},{"dashboard","Open the rounded dashboard popup."},{"check-updates","Report the official GitHub release check without opening a window."},{"capture-page","Select a page for capture.","name"},{"demo-wallpaper","Set an image for an isolated preview check.","path"},{"demo","Preview without changing desktop settings."},{"worker","Independent trial watchdog (internal).","id"},{"recover","Restore an unfinished trial.","id"},{"recover-all","Restore abandoned trials at login without opening a window."},{"inspect","Print read-only desktop integration details."},{"ui-check","Run an isolated GUI confirmation check and capture an image.","path"},{"capture","Save a screenshot of the app, then exit.","path"},{"probe-input","Test global input reporting without changing settings."}});
     p.process(app);
     try {
         if(getuid()==0)throw std::runtime_error("Run KamaKiriStudio as your desktop user, not root.");
+        if(p.isSet("desktop-frame"))return Studio::runDesktopFrame();
         if(p.isSet("check-plugins")){Studio::checkPluginSession(p.value("check-plugins").split(',',Qt::SkipEmptyParts));QTextStream(stdout)<<"Plasma runtime and plugin imports verified.\n";return 0;}
         if(p.isSet("probe-plugin"))return Studio::probePlasmaPlugin(p.value("probe-plugin"));
+        if(p.isSet("desktop-layout-preview")){
+            auto wallpaper=p.value("demo-wallpaper");if(wallpaper.isEmpty())wallpaper=Studio::associatedWallpaper("omarchy-osaka-jade");else Studio::loadWallpaper(wallpaper);
+            auto view=desktopLayoutPreview(wallpaper,Studio::desktopPalette("omarchy-osaka-jade","desktop"));view->show();
+            QObject::connect(&app,&QApplication::lastWindowClosed,&app,&QCoreApplication::quit);
+            if(p.isSet("capture")){const auto path=p.value("capture");QTimer::singleShot(700,view,[view,path]{QCoreApplication::exit(view->grab().save(path)?0:2);});}
+            return app.exec();
+        }
         if(p.isSet("inspect")){QTextStream(stdout)<<QJsonDocument(Studio::inspect()).toJson();return 0;}
         if(p.isSet("recover-all")) {
             QDir root(Studio::stateRoot());

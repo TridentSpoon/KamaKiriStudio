@@ -17,17 +17,17 @@ PACKAGES = {
     'deb': ['build-essential', 'cmake', 'ninja-build', 'pkg-config',
             'qt6-base-dev', 'qt6-declarative-dev', 'qt6-image-formats-plugins',
             'libkf6config-dev', 'libkf6idletime-dev', 'libkf6service-dev',
-            'libkf6kio-dev', 'libkf6windowsystem-dev', 'libwayland-dev',
+            'liblayershellqtinterface-dev', 'libkf6kio-dev', 'libkf6windowsystem-dev', 'libwayland-dev',
             'libwayland-bin', 'qml6-module-qtquick', 'qml6-module-qtquick-controls',
             'qml6-module-qtquick-layouts', 'qml6-module-qtquick-window',
             'qml6-module-qtqml-workerscript', 'breeze'],
     'rpm': ['gcc', 'gcc-c++', 'cmake', 'ninja-build', 'pkgconf-pkg-config',
             'qt6-qtbase-devel', 'qt6-qtdeclarative-devel', 'qt6-qtimageformats',
             'kf6-kconfig-devel', 'kf6-kidletime-devel', 'kf6-kservice-devel',
-            'kf6-kio-devel', 'kf6-kwindowsystem-devel', 'wayland-devel'],
+            'layer-shell-qt-devel', 'kf6-kio-devel', 'kf6-kwindowsystem-devel', 'wayland-devel'],
     'arch': ['base-devel', 'cmake', 'ninja', 'pkgconf', 'qt6-base',
              'qt6-declarative', 'qt6-imageformats', 'kconfig', 'kidletime',
-             'kservice', 'kio', 'kwindowsystem', 'wayland', 'breeze'],
+             'layer-shell-qt', 'kservice', 'kio', 'kwindowsystem', 'wayland', 'breeze'],
 }
 
 def run(command, **kwargs):
